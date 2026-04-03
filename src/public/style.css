@@ -2097,7 +2097,8 @@ pre, code {
 
 /* Responsive: hide cost & model on mobile */
 @media (max-width: 768px) {
-    .usage-hide-mobile {
+    .usage-hide-mobile,
+    .usage-hide-cost {
         display: none !important;
     }
 
@@ -2113,15 +2114,11 @@ pre, code {
     .usage-progress-wrap {
         width: 40px;
     }
-
-    .usage-cost {
-        display: none !important;
-    }
 }
 
 /* Very small screens: minimal display */
 @media (max-width: 480px) {
-    .usage-rate {
+    .usage-hide-rate {
         display: none !important;
     }
 
