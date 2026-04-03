@@ -18,6 +18,7 @@ class ClaudeCodeWebInterface {
         this.currentMode = 'chat';
         this.planDetector = null;
         this.planModal = null;
+        this.agentTracker = null;
         // Aliases for assistants (populated from /api/config)
         this.aliases = { claude: 'Claude', codex: 'Codex' };
         
@@ -47,6 +48,7 @@ class ClaudeCodeWebInterface {
         this.setupTerminal();
         this.setupUI();
         this.setupPlanDetector();
+        this.setupAgentTracker();
         this.loadSettings();
         this.applyAliasesToUI();
         this.disablePullToRefresh();
@@ -747,9 +749,12 @@ class ClaudeCodeWebInterface {
                     this.sessionTabManager.markSessionActivity(this.currentClaudeSessionId, true, message.data);
                 }
                 
-                // Pass output to plan detector
+                // Pass output to plan detector and agent tracker
                 if (this.planDetector) {
                     this.planDetector.processOutput(message.data);
+                }
+                if (this.agentTracker) {
+                    this.agentTracker.processOutput(message.data);
                 }
                 break;
                 
@@ -1733,7 +1738,130 @@ class ClaudeCodeWebInterface {
         // Start monitoring
         this.planDetector.startMonitoring();
     }
-    
+
+    setupAgentTracker() {
+        this.agentTracker = new AgentTracker();
+        const panel = document.getElementById('agentPanel');
+        const toggleBtn = document.getElementById('agentToggleBtn');
+        const clearBtn = document.getElementById('agentClearBtn');
+        const header = document.getElementById('agentPanelHeader');
+
+        // Toggle collapse
+        if (header) {
+            header.addEventListener('click', (e) => {
+                if (e.target.closest('.agent-panel-clear')) return;
+                panel.classList.toggle('collapsed');
+            });
+        }
+
+        // Clear completed
+        if (clearBtn) {
+            clearBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.agentTracker.clearCompleted();
+                this.renderAgentPanel();
+            });
+        }
+
+        // Callbacks
+        this.agentTracker.onAgentStart = (agent) => {
+            panel.style.display = 'flex';
+            panel.classList.remove('collapsed', 'all-done');
+            this.renderAgentPanel();
+        };
+
+        this.agentTracker.onAgentComplete = (agent) => {
+            this.renderAgentPanel();
+            // Notify via session manager
+            if (this.sessionTabManager && this.currentClaudeSessionId) {
+                const status = agent.status === 'completed' ? 'completed' : 'failed';
+                const duration = this.agentTracker.formatDuration(agent.endTime - agent.startTime);
+                this.sessionTabManager.sendNotification(
+                    `Sub-Agent ${status}`,
+                    `${agent.description} (${duration})`,
+                    this.currentClaudeSessionId
+                );
+            }
+        };
+
+        this.agentTracker.onChange = () => {
+            const active = this.agentTracker.getActiveAgents();
+            const all = this.agentTracker.getAgents();
+            if (all.length === 0) {
+                panel.style.display = 'none';
+            } else {
+                panel.style.display = 'flex';
+                if (active.length === 0) {
+                    panel.classList.add('all-done');
+                } else {
+                    panel.classList.remove('all-done');
+                }
+            }
+        };
+
+        this.agentTracker.startMonitoring();
+    }
+
+    renderAgentPanel() {
+        const list = document.getElementById('agentList');
+        const countEl = document.getElementById('agentCount');
+        if (!list) return;
+
+        const agents = this.agentTracker.getAgents();
+        countEl.textContent = agents.length;
+
+        list.textContent = '';
+
+        if (agents.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'agent-empty';
+            empty.textContent = 'No sub-agents detected';
+            list.appendChild(empty);
+            return;
+        }
+
+        // Show most recent first
+        const sorted = [...agents].reverse();
+        sorted.forEach(agent => {
+            const item = document.createElement('div');
+            item.className = 'agent-item';
+
+            // Status icon
+            const statusEl = document.createElement('div');
+            statusEl.className = 'agent-item-status';
+            if (agent.status === 'running') {
+                statusEl.innerHTML = '<div class="agent-item-spinner"></div>';
+            } else if (agent.status === 'completed') {
+                statusEl.innerHTML = '<svg class="agent-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
+            } else {
+                statusEl.innerHTML = '<svg class="agent-item-fail" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+            }
+            item.appendChild(statusEl);
+
+            // Body
+            const body = document.createElement('div');
+            body.className = 'agent-item-body';
+            const desc = document.createElement('div');
+            desc.className = 'agent-item-desc';
+            desc.textContent = agent.description;
+            body.appendChild(desc);
+
+            const meta = document.createElement('div');
+            meta.className = 'agent-item-meta';
+            if (agent.status === 'running') {
+                const elapsed = Date.now() - agent.startTime;
+                meta.textContent = this.agentTracker.formatDuration(elapsed) + ' running';
+            } else {
+                const duration = agent.endTime - agent.startTime;
+                meta.textContent = `${agent.status} in ${this.agentTracker.formatDuration(duration)}`;
+            }
+            body.appendChild(meta);
+            item.appendChild(body);
+
+            list.appendChild(item);
+        });
+    }
+
     showPlanModal(plan) {
         const modal = document.getElementById('planModal');
         const content = document.getElementById('planContent');
