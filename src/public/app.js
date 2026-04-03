@@ -1041,7 +1041,18 @@ class ClaudeCodeWebInterface {
     }
 
     applySettings(settings) {
-        // Token stats bar removed - no longer needed
+        // Toggle usage bar visibility based on settings
+        const usageBar = document.getElementById('usageBar');
+        if (usageBar) {
+            if (settings.showTokenStats) {
+                // Show bar (actual display is controlled by updateUsageDisplay)
+                // Request fresh stats to populate it
+                this.requestUsageStats();
+            } else {
+                usageBar.style.display = 'none';
+            }
+        }
+
         // Apply theme (dark is default; light sets attribute)
         if (settings.theme === 'light') {
             document.documentElement.setAttribute('data-theme', 'light');
@@ -1841,27 +1852,166 @@ class ClaudeCodeWebInterface {
     }
 
     startSessionTimerUpdate() {
-        // Token usage timer removed - no UI elements to update
-        return;
+        // Live timer is now handled by _startLiveTimer() in updateUsageDisplay
+        this._startLiveTimer();
     }
 
     updateUsageDisplay(sessionStats, dailyStats, sessionTimer, analytics, burnRate, plan, limits) {
-        // Token usage display removed - no UI elements to update
-        return;
-        
-        // Container is already visible by default
-        
-        // Check if mobile screen
-        const isMobile = window.innerWidth <= 768;
-        const isSmallMobile = window.innerWidth <= 480;
-        
-        // Format tokens (K/M notation)
+        const usageBar = document.getElementById('usageBar');
+        if (!usageBar) return;
+
+        // Check settings - hide bar if user disabled token stats
+        const settings = this.loadSettings();
+        if (!settings.showTokenStats) {
+            usageBar.style.display = 'none';
+            return;
+        }
+
+        // Helper: format tokens (K/M notation)
         const formatTokens = (tokens) => {
-            if (tokens >= 1000000) {
-                return (tokens / 1000000).toFixed(1) + 'M';
-            } else if (tokens >= 1000) {
-                return (tokens / 1000).toFixed(1) + 'K';
+            if (tokens >= 1000000) return (tokens / 1000000).toFixed(1) + 'M';
+            if (tokens >= 1000) return (tokens / 1000).toFixed(1) + 'K';
+            return tokens.toString();
+        };
+
+        // Store plan/limits for reference
+        this.currentPlan = plan;
+        this.planLimits = limits;
+
+        if (sessionStats && sessionStats.totalTokens !== undefined) {
+            // Show the bar
+            usageBar.style.display = 'flex';
+
+            // --- Session Timer ---
+            const timerEl = document.getElementById('usageTimer');
+            if (sessionTimer && !sessionTimer.isExpired && sessionTimer.remainingMs > 0) {
+                const rh = Math.floor(sessionTimer.remainingMs / (1000 * 60 * 60));
+                const rm = Math.floor((sessionTimer.remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+                timerEl.textContent = `${rh}h ${String(rm).padStart(2, '0')}m`;
+                // Store for live countdown
+                this._sessionEndTime = Date.now() + sessionTimer.remainingMs;
+                this._startLiveTimer();
+            } else if (sessionTimer && sessionTimer.isExpired) {
+                timerEl.textContent = 'Expired';
+                this._stopLiveTimer();
+            } else {
+                timerEl.textContent = '--:--';
             }
+
+            // --- Token Usage + Progress ---
+            const tokensEl = document.getElementById('usageTokens');
+            const progressFill = document.getElementById('usageProgressFill');
+            const actualTokens = sessionStats.totalTokens || 0;
+            let tokenLimit = limits?.tokens;
+            if (!tokenLimit && plan === 'custom') tokenLimit = 188026;
+
+            const isMobile = window.innerWidth <= 768;
+            const isSmallMobile = window.innerWidth <= 480;
+
+            if (tokenLimit) {
+                const pct = Math.min(100, (actualTokens / tokenLimit) * 100);
+                if (isSmallMobile) {
+                    tokensEl.textContent = `${pct.toFixed(1)}%`;
+                } else if (isMobile) {
+                    tokensEl.textContent = `${formatTokens(actualTokens)} (${pct.toFixed(0)}%)`;
+                } else {
+                    tokensEl.textContent = `${formatTokens(actualTokens)} / ${formatTokens(tokenLimit)}`;
+                }
+                // Progress bar
+                progressFill.style.width = pct + '%';
+                progressFill.className = 'usage-progress-fill';
+                if (pct >= 90) progressFill.classList.add('danger');
+                else if (pct >= 70) progressFill.classList.add('warning');
+            } else {
+                tokensEl.textContent = formatTokens(actualTokens);
+                progressFill.style.width = '0%';
+            }
+
+            // --- Cost ---
+            const costEl = document.getElementById('usageCost');
+            const cost = sessionStats.totalCost || 0;
+            costEl.textContent = cost > 0 ? `$${cost.toFixed(2)}` : '$0.00';
+
+            // --- Burn Rate ---
+            const rateEl = document.getElementById('usageRate');
+            const br = (sessionTimer && sessionTimer.burnRate > 0) ? sessionTimer.burnRate
+                      : (burnRate && burnRate.rate > 0) ? burnRate.rate : 0;
+            if (br > 0) {
+                rateEl.textContent = `${Math.round(br)} tok/min`;
+                // Depletion tooltip
+                if (sessionTimer?.depletionTime && sessionTimer.depletionConfidence > 0.5) {
+                    const minsLeft = Math.max(0, (new Date(sessionTimer.depletionTime) - Date.now()) / 60000);
+                    const rateItem = document.getElementById('usageRateItem');
+                    if (minsLeft < 60) {
+                        rateItem.title = `Depleting in ~${Math.round(minsLeft)}m`;
+                    } else {
+                        rateItem.title = `Depleting in ~${Math.floor(minsLeft / 60)}h ${Math.round(minsLeft % 60)}m`;
+                    }
+                }
+            } else {
+                rateEl.textContent = '-';
+            }
+
+            // --- Model Distribution ---
+            const modelEl = document.getElementById('usageModel');
+            if (sessionStats.models && Object.keys(sessionStats.models).length > 0) {
+                let totalTok = 0, opusTok = 0, sonnetTok = 0, haikuTok = 0;
+                for (const [model, data] of Object.entries(sessionStats.models)) {
+                    const mt = (data.inputTokens || 0) + (data.outputTokens || 0);
+                    totalTok += mt;
+                    if (model.includes('opus')) opusTok += mt;
+                    else if (model.includes('sonnet')) sonnetTok += mt;
+                    else if (model.includes('haiku')) haikuTok += mt;
+                }
+                if (totalTok > 0) {
+                    const parts = [];
+                    if (opusTok > 0) parts.push(`Opus ${((opusTok / totalTok) * 100).toFixed(0)}%`);
+                    if (sonnetTok > 0) parts.push(`Sonnet ${((sonnetTok / totalTok) * 100).toFixed(0)}%`);
+                    if (haikuTok > 0) parts.push(`Haiku ${((haikuTok / totalTok) * 100).toFixed(0)}%`);
+                    modelEl.textContent = parts.join(' / ') || 'Unknown';
+                } else {
+                    modelEl.textContent = '-';
+                }
+            } else {
+                modelEl.textContent = '-';
+            }
+        } else {
+            // No data - show bar with defaults
+            usageBar.style.display = 'flex';
+            document.getElementById('usageTimer').textContent = '--:--';
+            document.getElementById('usageTokens').textContent = '0';
+            document.getElementById('usageCost').textContent = '$0.00';
+            document.getElementById('usageRate').textContent = '-';
+            document.getElementById('usageModel').textContent = '-';
+            document.getElementById('usageProgressFill').style.width = '0%';
+            this._stopLiveTimer();
+        }
+    }
+
+    _startLiveTimer() {
+        if (this._liveTimerInterval) return; // Already running
+        this._liveTimerInterval = setInterval(() => {
+            if (!this._sessionEndTime) { this._stopLiveTimer(); return; }
+            const remaining = Math.max(0, this._sessionEndTime - Date.now());
+            const timerEl = document.getElementById('usageTimer');
+            if (!timerEl) return;
+            if (remaining <= 0) {
+                timerEl.textContent = 'Expired';
+                this._stopLiveTimer();
+                return;
+            }
+            const rh = Math.floor(remaining / (1000 * 60 * 60));
+            const rm = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+            timerEl.textContent = `${rh}h ${String(rm).padStart(2, '0')}m`;
+        }, 30000); // Update every 30s
+    }
+
+    _stopLiveTimer() {
+        if (this._liveTimerInterval) {
+            clearInterval(this._liveTimerInterval);
+            this._liveTimerInterval = null;
+        }
+    }
             return tokens.toString();
         };
         
