@@ -15,8 +15,8 @@ describe('ClaudeBridge', function() {
     });
 
     it('should find a claude command on initialization', function() {
-      assert(typeof bridge.claudeCommand === 'string');
-      assert(bridge.claudeCommand.length > 0);
+      assert(typeof bridge.command === 'string');
+      assert(bridge.command.length > 0);
     });
   });
 

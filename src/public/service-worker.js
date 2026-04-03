@@ -48,9 +48,8 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
 
   // For API calls and WebSocket connections, always use network
-  if (url.pathname.startsWith('/api/') || 
+  if (url.pathname.startsWith('/api/') ||
       url.pathname.startsWith('/ws') ||
-      url.pathname === '/auth-status' ||
       request.url.includes('socket.io')) {
     event.respondWith(
       fetch(request)

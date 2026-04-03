@@ -119,10 +119,14 @@ class SessionTabManager {
             animation: slideDown 0.3s ease-out;
         `;
         
-        toast.innerHTML = `
-            <div style="font-weight: bold; margin-bottom: 4px;">${title}</div>
-            <div style="font-size: 14px; opacity: 0.9;">${body}</div>
-        `;
+        const titleDiv = document.createElement('div');
+        titleDiv.style.cssText = 'font-weight: bold; margin-bottom: 4px;';
+        titleDiv.textContent = title;
+        const bodyDiv = document.createElement('div');
+        bodyDiv.style.cssText = 'font-size: 14px; opacity: 0.9;';
+        bodyDiv.textContent = body;
+        toast.appendChild(titleDiv);
+        toast.appendChild(bodyDiv);
         
         // Add CSS animation
         if (!document.querySelector('#mobileNotificationStyles')) {
@@ -540,10 +544,7 @@ class SessionTabManager {
     async loadSessions() {
         try {
             console.log('[SessionManager.loadSessions] Fetching sessions from server...');
-            const authHeaders = window.authManager ? window.authManager.getAuthHeaders() : {};
-            const response = await fetch('/api/sessions/list', {
-                headers: authHeaders
-            });
+            const response = await fetch('/api/sessions/list');
             const data = await response.json();
             
             console.log('[SessionManager.loadSessions] Got data:', data);
@@ -601,18 +602,22 @@ class SessionTabManager {
         const folderName = workingDir ? workingDir.split('/').pop() || '/' : null;
         const displayName = !isDefaultSessionName ? sessionName : (folderName || sessionName);
         
-        tab.innerHTML = `
-            <div class="tab-content">
-                <span class="tab-status ${status}"></span>
-                <span class="tab-name" title="${workingDir || sessionName}">${displayName}</span>
-            </div>
-            <span class="tab-close" title="Close tab">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" y1="6" x2="6" y2="18"/>
-                    <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-            </span>
-        `;
+        const tabContent = document.createElement('div');
+        tabContent.className = 'tab-content';
+        const statusSpan = document.createElement('span');
+        statusSpan.className = `tab-status ${status}`;
+        tabContent.appendChild(statusSpan);
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'tab-name';
+        nameSpan.title = workingDir || sessionName;
+        nameSpan.textContent = displayName;
+        tabContent.appendChild(nameSpan);
+        tab.appendChild(tabContent);
+        const closeSpan = document.createElement('span');
+        closeSpan.className = 'tab-close';
+        closeSpan.title = 'Close tab';
+        closeSpan.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+        tab.appendChild(closeSpan);
         
         // Tab click handler
         tab.addEventListener('click', async (e) => {
@@ -762,10 +767,8 @@ class SessionTabManager {
         this.updateOverflowMenu();
 
         if (!skipServerRequest) {
-            const authHeaders = window.authManager ? window.authManager.getAuthHeaders() : {};
-            fetch(`/api/sessions/${sessionId}`, { 
-                method: 'DELETE',
-                headers: authHeaders
+            fetch(`/api/sessions/${sessionId}`, {
+                method: 'DELETE'
             })
                 .catch(err => console.error('Failed to delete session:', err));
         }

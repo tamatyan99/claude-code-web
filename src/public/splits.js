@@ -92,11 +92,6 @@ class Split {
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         let wsUrl = `${protocol}//${location.host}?sessionId=${encodeURIComponent(sessionId)}`;
         
-        // Add auth token if needed
-        if (window.authManager) {
-            wsUrl = window.authManager.getWebSocketUrl(wsUrl);
-        }
-        
         this.socket = new WebSocket(wsUrl);
         
         this.socket.onopen = () => {

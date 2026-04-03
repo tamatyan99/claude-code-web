@@ -36,39 +36,13 @@ class ClaudeCodeWebInterface {
         this.init();
     }
 
-    // Helper method for authenticated fetch calls
-    async authFetch(url, options = {}) {
-        const authHeaders = window.authManager.getAuthHeaders();
-        const mergedOptions = {
-            ...options,
-            headers: {
-                ...authHeaders,
-                ...(options.headers || {})
-            }
-        };
-        const response = await fetch(url, mergedOptions);
-        
-        // If we get a 401, the token might be invalid or missing
-        if (response.status === 401 && window.authManager.authRequired) {
-            // Clear any invalid token
-            window.authManager.token = null;
-            sessionStorage.removeItem('cc-web-token');
-            // Show login prompt
-            window.authManager.showLoginPrompt();
-        }
-        
-        return response;
+    escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
     }
 
     async init() {
-        // Check authentication first
-        const authenticated = await window.authManager.initialize();
-        if (!authenticated) {
-            // Auth prompt is shown, stop initialization
-            console.log('[Init] Authentication required, waiting for login...');
-            return;
-        }
-        
         await this.loadConfig();
         this.setupTerminal();
         this.setupUI();
@@ -126,7 +100,7 @@ class ClaudeCodeWebInterface {
 
     async loadConfig() {
         try {
-            const res = await this.authFetch('/api/config');
+            const res = await fetch('/api/config');
             if (res.ok) {
                 const cfg = await res.json();
                 if (cfg?.aliases) {
@@ -167,7 +141,15 @@ class ClaudeCodeWebInterface {
 
         // Plan modal title
         const planTitle = document.querySelector('#planModal .modal-header h2');
-        if (planTitle) planTitle.innerHTML = `<span class=\"icon\" aria-hidden=\"true\">${window.icons?.clipboard?.(18) || ''}</span> ${this.getAlias('claude')}'s Plan`;
+        if (planTitle) {
+            planTitle.textContent = '';
+            const iconSpan = document.createElement('span');
+            iconSpan.className = 'icon';
+            iconSpan.setAttribute('aria-hidden', 'true');
+            iconSpan.innerHTML = window.icons?.clipboard?.(18) || '';
+            planTitle.appendChild(iconSpan);
+            planTitle.appendChild(document.createTextNode(` ${this.getAlias('claude')}'s Plan`));
+        }
     }
     
     detectMobile() {
@@ -376,16 +358,18 @@ class ClaudeCodeWebInterface {
                 <div class="modal-body">
                     <div class="session-list">
                         ${this.claudeSessions.map(session => {
-                            const statusIcon = `<span class=\"dot ${session.active ? 'dot-on' : 'dot-idle'}\"></span>`;
+                            const statusIcon = `<span class="dot ${session.active ? 'dot-on' : 'dot-idle'}"></span>`;
                             const clientsText = session.connectedClients === 1 ? '1 client' : `${session.connectedClients} clients`;
+                            const safeName = this.escapeHtml(session.name);
+                            const safeDir = session.workingDir ? this.escapeHtml(session.workingDir) : '';
                             return `
                                 <div class="session-item" data-session-id="${session.id}" style="cursor: pointer; padding: 15px; border: 1px solid #333; border-radius: 5px; margin-bottom: 10px;">
                                     <div class="session-info">
                                         <span class="session-status">${statusIcon}</span>
                                         <div class="session-details">
-                                            <div class="session-name">${session.name}</div>
+                                            <div class="session-name">${safeName}</div>
                                             <div class="session-meta">${clientsText} • ${new Date(session.created).toLocaleString()}</div>
-                                            ${session.workingDir ? `<div class=\"session-folder\" title=\"${session.workingDir}\"><span class=\"icon\" aria-hidden=\"true\">${window.icons?.folder?.(14) || ''}</span> ${session.workingDir}</div>` : ''}
+                                            ${session.workingDir ? `<div class="session-folder" title="${safeDir}"><span class="icon" aria-hidden="true">${window.icons?.folder?.(14) || ''}</span> ${safeDir}</div>` : ''}
                                         </div>
                                     </div>
                                 </div>
@@ -523,9 +507,6 @@ class ClaudeCodeWebInterface {
             if (sessionId) {
                 wsUrl += `?sessionId=${sessionId}`;
             }
-            
-            // Add auth token if required
-            wsUrl = window.authManager.getWebSocketUrl(wsUrl);
             
             this.updateStatus('Connecting...');
             // Only show loading spinner if overlay is already visible
@@ -1139,14 +1120,8 @@ class ClaudeCodeWebInterface {
         if (showHidden) params.append('showHidden', 'true');
         
         try {
-            const response = await this.authFetch(`/api/folders?${params}`);
+            const response = await fetch(`/api/folders?${params}`);
             if (!response.ok) {
-                // Handle 401 specifically - show auth prompt
-                if (response.status === 401) {
-                    console.log('Authentication required - showing login prompt');
-                    window.authManager.showLoginPrompt();
-                    return;
-                }
                 const error = await response.json();
                 throw new Error(error.message || 'Failed to load folders');
             }
@@ -1182,12 +1157,20 @@ class ClaudeCodeWebInterface {
         data.folders.forEach(folder => {
             const folderItem = document.createElement('div');
             folderItem.className = 'folder-item';
-            folderItem.innerHTML = `
-                <svg class="folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                </svg>
-                <span class="folder-name">${folder.name}</span>
-            `;
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('class', 'folder-icon');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('fill', 'none');
+            svg.setAttribute('stroke', 'currentColor');
+            svg.setAttribute('stroke-width', '2');
+            const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            pathEl.setAttribute('d', 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z');
+            svg.appendChild(pathEl);
+            folderItem.appendChild(svg);
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'folder-name';
+            nameSpan.textContent = folder.name;
+            folderItem.appendChild(nameSpan);
             folderItem.addEventListener('click', () => this.loadFolders(folder.path));
             folderList.appendChild(folderItem);
         });
@@ -1234,7 +1217,7 @@ class ClaudeCodeWebInterface {
         }
         
         try {
-            const response = await this.authFetch('/api/create-folder', {
+            const response = await fetch('/api/create-folder', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1246,12 +1229,6 @@ class ClaudeCodeWebInterface {
             });
             
             if (!response.ok) {
-                // Handle 401 specifically - show auth prompt
-                if (response.status === 401) {
-                    console.log('Authentication required - showing login prompt');
-                    window.authManager.showLoginPrompt();
-                    return;
-                }
                 const error = await response.json();
                 throw new Error(error.message || 'Failed to create folder');
             }
@@ -1278,7 +1255,7 @@ class ClaudeCodeWebInterface {
         if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
             try {
                 // Set the working directory on the server
-                const response = await this.authFetch('/api/folders/select', {
+                const response = await fetch('/api/folders/select', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1326,7 +1303,7 @@ class ClaudeCodeWebInterface {
         
         // Otherwise, set working directory for current session
         try {
-            const response = await this.authFetch('/api/set-working-dir', {
+            const response = await fetch('/api/set-working-dir', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1359,7 +1336,7 @@ class ClaudeCodeWebInterface {
             }
             
             // Clear the working directory on the server
-            const response = await this.authFetch('/api/close-session', {
+            const response = await fetch('/api/close-session', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1420,7 +1397,7 @@ class ClaudeCodeWebInterface {
     
     async loadMobileSessions() {
         try {
-            const response = await this.authFetch('/api/sessions/list');
+            const response = await fetch('/api/sessions/list');
             if (!response.ok) throw new Error('Failed to load sessions');
             
             const data = await response.json();
@@ -1449,14 +1426,17 @@ class ClaudeCodeWebInterface {
             
             const statusIcon = `<span class="dot ${session.active ? 'dot-on' : 'dot-idle'}"></span>`;
             const clientsText = session.connectedClients === 1 ? '1 client' : `${session.connectedClients} clients`;
-            
+            const safeName = this.escapeHtml(session.name);
+            const safeWorkingDir = session.workingDir ? this.escapeHtml(session.workingDir) : '';
+            const safeFolderName = session.workingDir ? this.escapeHtml(session.workingDir.split('/').pop() || '/') : '';
+
             sessionItem.innerHTML = `
                 <div class="session-info">
                     <span class="session-status">${statusIcon}</span>
                     <div class="session-details">
-                        <div class="session-name">${session.name}</div>
+                        <div class="session-name">${safeName}</div>
                         <div class="session-meta">${clientsText} • ${new Date(session.created).toLocaleTimeString()}</div>
-                        ${session.workingDir ? `<div class=\"session-folder\" title=\"${session.workingDir}\"><span class=\"icon\" aria-hidden=\"true\">${window.icons?.folder?.(14) || ''}</span> ${session.workingDir.split('/').pop() || '/'}</div>` : ''}
+                        ${session.workingDir ? `<div class="session-folder" title="${safeWorkingDir}"><span class="icon" aria-hidden="true">${window.icons?.folder?.(14) || ''}</span> ${safeFolderName}</div>` : ''}
                     </div>
                 </div>
                 <div class="session-actions">
@@ -1496,7 +1476,7 @@ class ClaudeCodeWebInterface {
     
     async loadSessions() {
         try {
-            const response = await this.authFetch('/api/sessions/list');
+            const response = await fetch('/api/sessions/list');
             if (!response.ok) throw new Error('Failed to load sessions');
             
             const data = await response.json();
@@ -1589,7 +1569,7 @@ class ClaudeCodeWebInterface {
         }
         
         try {
-            const response = await this.authFetch(`/api/sessions/${sessionId}`, {
+            const response = await fetch(`/api/sessions/${sessionId}`, {
                 method: 'DELETE'
             });
             
@@ -1696,7 +1676,7 @@ class ClaudeCodeWebInterface {
         }
         
         try {
-            const response = await this.authFetch('/api/sessions/create', {
+            const response = await fetch('/api/sessions/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, workingDir })
@@ -1758,19 +1738,26 @@ class ClaudeCodeWebInterface {
         const modal = document.getElementById('planModal');
         const content = document.getElementById('planContent');
         
-        // Format the plan content
-        let formattedContent = plan.content;
-        
-        // Convert markdown to basic HTML for better display
-        formattedContent = formattedContent
-            .replace(/^### (.*?)$/gm, '<h3>$1</h3>')
-            .replace(/^## (.*?)$/gm, '<h2>$1</h2>')
-            .replace(/^- (.*?)$/gm, '• $1')
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/`([^`]+)`/g, '<code>$1</code>');
-        
-        content.innerHTML = formattedContent;
+        // Format the plan content safely using textContent
+        content.textContent = '';
+        const lines = plan.content.split('\n');
+        lines.forEach(line => {
+            let el;
+            if (line.startsWith('### ')) {
+                el = document.createElement('h3');
+                el.textContent = line.slice(4);
+            } else if (line.startsWith('## ')) {
+                el = document.createElement('h2');
+                el.textContent = line.slice(3);
+            } else if (line.startsWith('- ')) {
+                el = document.createElement('div');
+                el.textContent = '\u2022 ' + line.slice(2);
+            } else {
+                el = document.createElement('div');
+                el.textContent = line;
+            }
+            content.appendChild(el);
+        });
         modal.classList.add('active');
         
         // Play a subtle notification sound (optional)

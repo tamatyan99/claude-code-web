@@ -7,7 +7,6 @@ describe('Server Aliases', function() {
       claudeAlias: 'Buddy',
       codexAlias: 'Robo',
       agentAlias: 'Helper',
-      noAuth: true // avoid auth middleware complexity
     });
 
     assert.strictEqual(server.aliases.claude, 'Buddy');
