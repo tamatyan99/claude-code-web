@@ -16,8 +16,6 @@ const UsageAnalytics = require('./usage-analytics');
 class ClaudeCodeWebServer {
   constructor(options = {}) {
     this.port = options.port || 32352;
-    this.auth = options.auth;
-    this.noAuth = options.noAuth || false;
     this.dev = options.dev || false;
     this.useHttps = options.https || false;
     this.certFile = options.cert;
@@ -161,40 +159,6 @@ class ClaudeCodeWebServer {
         res.send(svgBuffer);
       });
     });
-
-    // Auth status endpoint - always accessible
-    this.app.get('/auth-status', (req, res) => {
-      res.json({ 
-        authRequired: !this.noAuth && !!this.auth,
-        authenticated: false 
-      });
-    });
-
-    // Auth verify endpoint - check if token is valid
-    this.app.post('/auth-verify', (req, res) => {
-      if (this.noAuth || !this.auth) {
-        return res.json({ valid: true }); // No auth required
-      }
-      
-      const { token } = req.body;
-      const valid = token === this.auth;
-      
-      if (valid) {
-        res.json({ valid: true });
-      } else {
-        res.status(401).json({ valid: false, error: 'Invalid token' });
-      }
-    });
-
-    if (!this.noAuth && this.auth) {
-      this.app.use((req, res, next) => {
-        const token = req.headers.authorization || req.query.token;
-        if (token !== `Bearer ${this.auth}` && token !== this.auth) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
-        next();
-      });
-    }
 
     // Commands API removed
 
@@ -544,24 +508,16 @@ class ClaudeCodeWebServer {
         throw new Error('HTTPS requires both --cert and --key options');
       }
       
-      const cert = fs.readFileSync(this.certFile);
-      const key = fs.readFileSync(this.keyFile);
+      const [cert, key] = await Promise.all([
+        fs.promises.readFile(this.certFile),
+        fs.promises.readFile(this.keyFile)
+      ]);
       server = https.createServer({ cert, key }, this.app);
     } else {
       server = http.createServer(this.app);
     }
 
-    this.wss = new WebSocket.Server({ 
-      server,
-      verifyClient: (info) => {
-        if (!this.noAuth && this.auth) {
-          const url = new URL(info.req.url, 'ws://localhost');
-          const token = url.searchParams.get('token');
-          return token === this.auth;
-        }
-        return true;
-      }
-    });
+    this.wss = new WebSocket.Server({ server });
 
     this.wss.on('connection', (ws, req) => {
       this.handleWebSocketConnection(ws, req);
@@ -603,6 +559,13 @@ class ClaudeCodeWebServer {
     ws.on('message', async (message) => {
       try {
         const data = JSON.parse(message);
+        if (!data || typeof data.type !== 'string') {
+          this.sendToWebSocket(ws, {
+            type: 'error',
+            message: 'Invalid message: missing or invalid type'
+          });
+          return;
+        }
         await this.handleMessage(wsId, data);
       } catch (error) {
         if (this.dev) {
@@ -895,17 +858,20 @@ class ClaudeCodeWebServer {
     try {
       await this.claudeBridge.startSession(sessionId, {
         workingDir: session.workingDir,
+        dangerouslySkipPermissions: !!options.dangerouslySkipPermissions,
+        cols: options.cols,
+        rows: options.rows,
         onOutput: (data) => {
           // Get the current session again to ensure we have the right reference
           const currentSession = this.claudeSessions.get(sessionId);
           if (!currentSession) return;
-          
+
           // Add to buffer
           currentSession.outputBuffer.push(data);
           if (currentSession.outputBuffer.length > currentSession.maxBufferSize) {
             currentSession.outputBuffer.shift();
           }
-          
+
           // Broadcast to all connected clients for THIS specific session
           this.broadcastToSession(sessionId, {
             type: 'output',
@@ -932,8 +898,7 @@ class ClaudeCodeWebServer {
             type: 'error',
             message: error.message
           });
-        },
-        ...options
+        }
       });
 
       session.active = true;
@@ -999,6 +964,9 @@ class ClaudeCodeWebServer {
     try {
       await this.codexBridge.startSession(sessionId, {
         workingDir: session.workingDir,
+        dangerouslySkipPermissions: !!options.dangerouslySkipPermissions,
+        cols: options.cols,
+        rows: options.rows,
         onOutput: (data) => {
           const currentSession = this.claudeSessions.get(sessionId);
           if (!currentSession) return;
@@ -1023,8 +991,7 @@ class ClaudeCodeWebServer {
             currentSession.agent = null;
           }
           this.broadcastToSession(sessionId, { type: 'error', message: error.message });
-        },
-        ...options
+        }
       });
 
       session.active = true;
@@ -1085,6 +1052,8 @@ class ClaudeCodeWebServer {
     try {
       await this.agentBridge.startSession(sessionId, {
         workingDir: session.workingDir,
+        cols: options.cols,
+        rows: options.rows,
         onOutput: (data) => {
           const currentSession = this.claudeSessions.get(sessionId);
           if (!currentSession) return;
@@ -1109,8 +1078,7 @@ class ClaudeCodeWebServer {
             currentSession.agent = null;
           }
           this.broadcastToSession(sessionId, { type: 'error', message: error.message });
-        },
-        ...options
+        }
       });
 
       session.active = true;
