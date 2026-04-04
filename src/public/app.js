@@ -68,9 +68,10 @@ class ClaudeCodeWebInterface {
             this.splitContainer.setupDropZones();
         }
         
-        // Show mode switcher on mobile
+        // Show mode switcher and key toolbar on mobile
         if (this.isMobile) {
             this.showModeSwitcher();
+            this.setupMobileKeyToolbar();
         }
         
         // Check if there are existing sessions
@@ -199,6 +200,66 @@ class ClaudeCodeWebInterface {
         }
     }
     
+    setupMobileKeyToolbar() {
+        const toolbar = document.getElementById('mobileKeyToolbar');
+        if (!toolbar) return;
+
+        this._ctrlActive = false;
+
+        const keyMap = {
+            'escape': '\x1b',
+            'tab': '\t',
+            'up': '\x1b[A',
+            'down': '\x1b[B',
+            'right': '\x1b[C',
+            'left': '\x1b[D',
+            'slash': '/',
+            'pipe': '|',
+            'tilde': '~'
+        };
+
+        toolbar.addEventListener('click', (e) => {
+            const btn = e.target.closest('.mkey');
+            if (!btn) return;
+
+            const key = btn.dataset.key;
+
+            // Ctrl toggle
+            if (key === 'ctrl') {
+                this._ctrlActive = !this._ctrlActive;
+                btn.classList.toggle('mkey-active', this._ctrlActive);
+                return;
+            }
+
+            if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+
+            let data = keyMap[key];
+            if (!data) return;
+
+            // Apply Ctrl modifier
+            if (this._ctrlActive && data.length === 1) {
+                // Convert to ctrl code: Ctrl+C = \x03, Ctrl+D = \x04, etc.
+                const code = data.toUpperCase().charCodeAt(0) - 64;
+                if (code > 0 && code < 32) {
+                    data = String.fromCharCode(code);
+                }
+                // Reset Ctrl after use
+                this._ctrlActive = false;
+                document.getElementById('mkeyCtrl')?.classList.remove('mkey-active');
+            }
+
+            this.send({ type: 'input', data });
+
+            // Visual feedback
+            btn.style.backgroundColor = 'var(--accent)';
+            btn.style.color = '#fff';
+            setTimeout(() => {
+                btn.style.backgroundColor = '';
+                btn.style.color = '';
+            }, 120);
+        });
+    }
+
     showModeSwitcher() {
         // Create mode switcher button if it doesn't exist
         if (!document.getElementById('modeSwitcher')) {
