@@ -1899,6 +1899,13 @@ pre, code {
     .mobile-key-toolbar {
         display: flex;
     }
+
+    /* Prevent page from scrolling when virtual keyboard opens */
+    html, body {
+        overflow: hidden;
+        position: fixed;
+        width: 100%;
+    }
 }
 
 .mkey {

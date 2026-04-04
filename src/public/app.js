@@ -72,6 +72,7 @@ class ClaudeCodeWebInterface {
         if (this.isMobile) {
             this.showModeSwitcher();
             this.setupMobileKeyToolbar();
+            this.setupViewportResize();
         }
         
         // Check if there are existing sessions
@@ -200,6 +201,40 @@ class ClaudeCodeWebInterface {
         }
     }
     
+    setupViewportResize() {
+        const app = document.getElementById('app');
+        if (!app) return;
+
+        const applyViewport = () => {
+            // Use visualViewport if available (handles keyboard)
+            if (window.visualViewport) {
+                const vh = window.visualViewport.height;
+                const offsetTop = window.visualViewport.offsetTop;
+                app.style.height = `${vh}px`;
+                app.style.maxHeight = `${vh}px`;
+                // Scroll the page so the viewport top is visible
+                window.scrollTo(0, offsetTop);
+            } else {
+                // Fallback: use innerHeight which shrinks on some browsers when keyboard opens
+                app.style.height = `${window.innerHeight}px`;
+                app.style.maxHeight = `${window.innerHeight}px`;
+            }
+            // Re-fit terminal to new size
+            this.fitTerminal();
+        };
+
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', applyViewport);
+            window.visualViewport.addEventListener('scroll', applyViewport);
+        } else {
+            // Fallback for browsers without visualViewport
+            window.addEventListener('resize', applyViewport);
+        }
+
+        // Apply once on init
+        applyViewport();
+    }
+
     setupMobileKeyToolbar() {
         const toolbar = document.getElementById('mobileKeyToolbar');
         if (!toolbar) return;
