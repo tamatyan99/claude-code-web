@@ -79,6 +79,11 @@
                 </div>
             </div>
             <div class="tab-actions">
+                <button class="tab-sessions-browse" id="sessionBrowseBtn" title="Browse Sessions">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+                </button>
                 <button class="tab-settings" id="settingsBtn" title="Settings">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/>
@@ -347,6 +352,24 @@
                             <button class="btn btn-primary" id="selectFolderBtn">Select This Folder</button>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Browser Modal -->
+    <div class="session-modal" id="sessionBrowserModal">
+        <div class="modal-content session-browser-content">
+            <div class="modal-header">
+                <h2>Sessions</h2>
+                <button class="close-btn" id="closeSessionBrowserBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="session-browser-search">
+                    <input type="text" id="sessionSearchInput" placeholder="Search sessions...">
+                </div>
+                <div class="session-browser-list" id="sessionBrowserList">
+                    <!-- Sessions will be dynamically added here -->
                 </div>
             </div>
         </div>
