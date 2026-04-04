@@ -1876,10 +1876,15 @@ pre, code {
 
 /* ─── Mobile Key Toolbar ─── */
 .mobile-key-toolbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 5px 8px;
+    padding: 6px 8px;
     background-color: var(--bg-secondary);
     border-top: 1px solid var(--border);
     overflow-x: auto;

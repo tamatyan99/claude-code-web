@@ -236,10 +236,6 @@ class ClaudeCodeWebInterface {
     }
 
     setupMobileKeyToolbar() {
-        // Dynamically create and insert the toolbar into #app
-        const app = document.getElementById('app');
-        if (!app) return;
-
         const toolbar = document.createElement('div');
         toolbar.className = 'mobile-key-toolbar';
         toolbar.id = 'mobileKeyToolbar';
@@ -274,8 +270,25 @@ class ClaudeCodeWebInterface {
             toolbar.appendChild(btn);
         });
 
-        // Append at the end of #app (below main, above nothing)
-        app.appendChild(toolbar);
+        // Append to body as a fixed-position bar
+        document.body.appendChild(toolbar);
+
+        // Position toolbar right above the virtual keyboard using visualViewport
+        const positionToolbar = () => {
+            if (window.visualViewport) {
+                const vv = window.visualViewport;
+                const bottomOffset = window.innerHeight - (vv.offsetTop + vv.height);
+                toolbar.style.bottom = `${bottomOffset}px`;
+            } else {
+                toolbar.style.bottom = '0px';
+            }
+        };
+
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', positionToolbar);
+            window.visualViewport.addEventListener('scroll', positionToolbar);
+        }
+        positionToolbar();
 
         this._ctrlActive = false;
 
