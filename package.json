@@ -1,7 +1,7 @@
 {
   "name": "claude-code-web",
   "version": "3.4.0",
-  "description": "Web-based interface for Claude Code CLI accessible via browser",
+  "description": "Web-based chat and terminal interface for Claude Code CLI with structured JSON output, multi-session support, and mobile optimization",
   "main": "src/server.js",
   "bin": {
     "cc-web": "./bin/cc-web.js"
@@ -35,7 +35,7 @@
     "ws": "^8.18.0"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=18.0.0"
   },
   "repository": {
     "type": "git",

@@ -1,40 +1,45 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- bin/cc-web.js: CLI entry; parses flags and starts the server.
-- src/server.js: Express + WebSocket server, routes, session wiring.
-- src/claude-bridge.js and src/codex-bridge.js: spawn and manage CLI sessions via node-pty.
-- src/utils/: helpers (auth token handling, session persistence).
-- src/public/: browser UI assets (HTML/JS/CSS) served by the server.
-- test/*.test.js: Mocha unit tests for bridges/utilities.
+- `bin/cc-web.js`: CLI entry; parses flags and starts the server.
+- `src/server.js`: Express + WebSocket server, routes, session wiring. Routes: `/` → Chat UI, `/v1` → Terminal UI.
+- `src/sdk-session.js`: SDK mode — spawns `claude -p --output-format stream-json`, parses JSONL output into structured messages. Handles model switching, session resume/continue.
+- `src/base-bridge.js`, `src/claude-bridge.js`, `src/codex-bridge.js`, `src/agent-bridge.js`: Legacy PTY mode — spawn and manage CLI sessions via node-pty.
+- `src/usage-reader.js`, `src/usage-analytics.js`: Usage tracking and cost analytics.
+- `src/utils/session-store.js`: Session persistence to `~/.claude-code-web/sessions.json`.
+- `src/public/v2/`: Chat UI assets (default at `/`). Files: `index.html`, `chat.js`, `chat.css`.
+- `src/public/`: Terminal UI assets (legacy at `/v1`). Files: `index.html`, `app.js`, `session-manager.js`, `plan-detector.js`, `agent-tracker.js`, `splits.js`, `style.css`.
+- `test/*.test.js`: Mocha unit tests.
+
+## Two Execution Modes
+- **SDK Mode (Chat UI)**: WebSocket messages `start_sdk` and `sdk_prompt` → `SdkSession` spawns `claude -p --output-format stream-json` → structured JSONL messages → client renders Markdown + tool cards.
+- **PTY Mode (Terminal UI)**: WebSocket messages `start_claude`/`input` → `BaseBridge` spawns CLI via node-pty → raw ANSI output → client renders via xterm.js.
 
 ## Build, Test, and Development Commands
-- npm install: install dependencies (Node 16+ required).
-- npm run dev: start locally with debug logging (equivalent to `node bin/cc-web.js --dev`).
-- npm start: start the web server (equivalent to `node bin/cc-web.js`).
-- npm test: run Mocha tests in `test/*.test.js`.
-Examples:
-- Run on a custom port: `node bin/cc-web.js --port 8080`.
-- Provide auth token: `node bin/cc-web.js --auth YOUR_TOKEN`.
+- `npm install`: install dependencies (Node 18+ required).
+- `npm run dev`: start locally with debug logging.
+- `npm start`: start the web server.
+- `npm test`: run Mocha tests in `test/*.test.js`.
+- Custom port: `node bin/cc-web.js --port 8080`.
 
 ## Coding Style & Naming Conventions
 - Language: Node.js (CommonJS). Indentation: 2 spaces; use semicolons; prefer single quotes.
-- Files: kebab-case for modules (e.g., `claude-bridge.js`), PascalCase for classes, camelCase for functions/variables.
+- Files: kebab-case for modules (e.g., `sdk-session.js`), PascalCase for classes, camelCase for functions/variables.
 - Tests: name as `*.test.js` colocated under `test/`.
-- Linters/formatters: none configured; match existing style and keep diffs minimal.
+- No linters/formatters configured; match existing style and keep diffs minimal.
 
 ## Testing Guidelines
-- Framework: Mocha with Node’s `assert`.
+- Framework: Mocha with Node's `assert`.
 - Location: `test/` directory; name tests `name.test.js`.
 - Running: `npm test`.
-- Behavior: write fast, isolated unit tests; avoid network and real CLI calls—mock process spawns where possible. Use temp dirs under `test/` (see `session-store.test.js`). No coverage threshold enforced.
+- Write fast, isolated unit tests; avoid network and real CLI calls — mock process spawns where possible.
 
 ## Commit & Pull Request Guidelines
-- Commits: follow Conventional Commits (e.g., `feat:`, `fix:`, `chore(release): vX.Y.Z`, `fix(analytics): …`).
-- PRs: concise description, linked issues, and screenshots/GIFs for UI-facing changes. Include reproduction steps and risk notes.
-- Tests/docs: add or update tests for behavior changes; update README/API docs when flags, routes, or defaults change.
+- Commits: follow Conventional Commits (e.g., `feat:`, `fix:`, `chore(release): vX.Y.Z`).
+- PRs: concise description, linked issues, screenshots/GIFs for UI changes.
+- Add or update tests for behavior changes; update README/CLAUDE.md when flags, routes, or defaults change.
 
-## Security & Configuration Tips
-- Auth: enabled by default. Use `--auth <token>` to set; avoid `--disable-auth` except in local dev. Do not commit or log tokens.
+## Security & Configuration
 - HTTPS: prefer `--https --cert <path> --key <path>` for production.
-- Dependencies: ensure Claude/Code CLI is installed and on PATH; respect `engines.node >= 16`.
+- Dependencies: ensure Claude Code CLI is installed and on PATH; respect `engines.node >= 18`.
+- Path validation prevents directory traversal in folder browser.
