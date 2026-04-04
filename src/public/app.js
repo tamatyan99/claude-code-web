@@ -68,9 +68,11 @@ class ClaudeCodeWebInterface {
             this.splitContainer.setupDropZones();
         }
         
-        // Show mode switcher on mobile
+        // Show mode switcher and key toolbar on mobile
         if (this.isMobile) {
             this.showModeSwitcher();
+            this.setupMobileKeyToolbar();
+            this.setupViewportResize();
         }
         
         // Check if there are existing sessions
@@ -199,6 +201,136 @@ class ClaudeCodeWebInterface {
         }
     }
     
+    setupViewportResize() {
+        const app = document.getElementById('app');
+        if (!app) return;
+
+        const applyViewport = () => {
+            // Use visualViewport if available (handles keyboard)
+            if (window.visualViewport) {
+                const vh = window.visualViewport.height;
+                const offsetTop = window.visualViewport.offsetTop;
+                app.style.height = `${vh}px`;
+                app.style.maxHeight = `${vh}px`;
+                // Scroll the page so the viewport top is visible
+                window.scrollTo(0, offsetTop);
+            } else {
+                // Fallback: use innerHeight which shrinks on some browsers when keyboard opens
+                app.style.height = `${window.innerHeight}px`;
+                app.style.maxHeight = `${window.innerHeight}px`;
+            }
+            // Re-fit terminal to new size
+            this.fitTerminal();
+        };
+
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', applyViewport);
+            window.visualViewport.addEventListener('scroll', applyViewport);
+        } else {
+            // Fallback for browsers without visualViewport
+            window.addEventListener('resize', applyViewport);
+        }
+
+        // Apply once on init
+        applyViewport();
+    }
+
+    setupMobileKeyToolbar() {
+        // Dynamically create and insert the toolbar into #app
+        const app = document.getElementById('app');
+        if (!app) return;
+
+        const toolbar = document.createElement('div');
+        toolbar.className = 'mobile-key-toolbar';
+        toolbar.id = 'mobileKeyToolbar';
+
+        const keys = [
+            { key: 'escape', label: 'Esc' },
+            { key: 'tab', label: 'Tab' },
+            { key: 'ctrl', label: 'Ctrl', cls: 'mkey-toggle', id: 'mkeyCtrl' },
+            { sep: true },
+            { key: 'up', label: '\u25B2' },
+            { key: 'down', label: '\u25BC' },
+            { key: 'left', label: '\u25C0' },
+            { key: 'right', label: '\u25B6' },
+            { sep: true },
+            { key: 'slash', label: '/' },
+            { key: 'pipe', label: '|' },
+            { key: 'tilde', label: '~' },
+        ];
+
+        keys.forEach(k => {
+            if (k.sep) {
+                const sep = document.createElement('div');
+                sep.className = 'mkey-separator';
+                toolbar.appendChild(sep);
+                return;
+            }
+            const btn = document.createElement('button');
+            btn.className = 'mkey' + (k.cls ? ' ' + k.cls : '');
+            btn.dataset.key = k.key;
+            if (k.id) btn.id = k.id;
+            btn.textContent = k.label;
+            toolbar.appendChild(btn);
+        });
+
+        // Append at the end of #app (below main, above nothing)
+        app.appendChild(toolbar);
+
+        this._ctrlActive = false;
+
+        const keyMap = {
+            'escape': '\x1b',
+            'tab': '\t',
+            'up': '\x1b[A',
+            'down': '\x1b[B',
+            'right': '\x1b[C',
+            'left': '\x1b[D',
+            'slash': '/',
+            'pipe': '|',
+            'tilde': '~'
+        };
+
+        toolbar.addEventListener('click', (e) => {
+            const btn = e.target.closest('.mkey');
+            if (!btn) return;
+
+            const key = btn.dataset.key;
+
+            // Ctrl toggle
+            if (key === 'ctrl') {
+                this._ctrlActive = !this._ctrlActive;
+                btn.classList.toggle('mkey-active', this._ctrlActive);
+                return;
+            }
+
+            if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+
+            let data = keyMap[key];
+            if (!data) return;
+
+            // Apply Ctrl modifier
+            if (this._ctrlActive && data.length === 1) {
+                const code = data.toUpperCase().charCodeAt(0) - 64;
+                if (code > 0 && code < 32) {
+                    data = String.fromCharCode(code);
+                }
+                this._ctrlActive = false;
+                document.getElementById('mkeyCtrl')?.classList.remove('mkey-active');
+            }
+
+            this.send({ type: 'input', data });
+
+            // Visual feedback
+            btn.style.backgroundColor = 'var(--accent)';
+            btn.style.color = '#fff';
+            setTimeout(() => {
+                btn.style.backgroundColor = '';
+                btn.style.color = '';
+            }, 120);
+        });
+    }
+
     showModeSwitcher() {
         // Create mode switcher button if it doesn't exist
         if (!document.getElementById('modeSwitcher')) {
