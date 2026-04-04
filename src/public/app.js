@@ -462,6 +462,7 @@ class ClaudeCodeWebInterface {
         this.setupFolderBrowser();
         this.setupNewSessionModal();
         this.setupMobileSessionsModal();
+        this.setupSessionBrowser();
 
         // Custom prompts dropdown removed
     }
@@ -1649,7 +1650,7 @@ class ClaudeCodeWebInterface {
     setupMobileSessionsModal() {
         const closeMobileSessionsBtn = document.getElementById('closeMobileSessionsModal');
         const newSessionBtnMobile = document.getElementById('newSessionBtnMobile');
-        
+
         if (closeMobileSessionsBtn) {
             closeMobileSessionsBtn.addEventListener('click', () => this.hideMobileSessionsModal());
         }
@@ -1663,6 +1664,161 @@ class ClaudeCodeWebInterface {
                 this.showFolderBrowser();
             });
         }
+    }
+
+    setupSessionBrowser() {
+        const browseBtn = document.getElementById('sessionBrowseBtn');
+        const closeBtn = document.getElementById('closeSessionBrowserBtn');
+        const modal = document.getElementById('sessionBrowserModal');
+        const searchInput = document.getElementById('sessionSearchInput');
+
+        if (browseBtn) {
+            browseBtn.addEventListener('click', () => this.showSessionBrowser());
+        }
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.hideSessionBrowser());
+        }
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) this.hideSessionBrowser();
+            });
+        }
+        if (searchInput) {
+            searchInput.addEventListener('input', () => this.filterSessionBrowser(searchInput.value));
+        }
+    }
+
+    async showSessionBrowser() {
+        const modal = document.getElementById('sessionBrowserModal');
+        modal.classList.add('active');
+
+        if (this.isMobile) {
+            document.body.style.overflow = 'hidden';
+        }
+
+        // Load sessions from server
+        try {
+            const response = await fetch('/api/sessions/list');
+            const data = await response.json();
+            this.browserSessions = data.sessions || [];
+        } catch (error) {
+            console.error('Failed to load sessions for browser:', error);
+            this.browserSessions = [];
+        }
+
+        this.renderSessionBrowser(this.browserSessions);
+        const searchInput = document.getElementById('sessionSearchInput');
+        if (searchInput) {
+            searchInput.value = '';
+            searchInput.focus();
+        }
+    }
+
+    hideSessionBrowser() {
+        document.getElementById('sessionBrowserModal').classList.remove('active');
+        if (this.isMobile) {
+            document.body.style.overflow = '';
+        }
+    }
+
+    filterSessionBrowser(query) {
+        if (!this.browserSessions) return;
+        const q = query.toLowerCase().trim();
+        if (!q) {
+            this.renderSessionBrowser(this.browserSessions);
+            return;
+        }
+        const filtered = this.browserSessions.filter(s =>
+            (s.name && s.name.toLowerCase().includes(q)) ||
+            (s.workingDir && s.workingDir.toLowerCase().includes(q))
+        );
+        this.renderSessionBrowser(filtered);
+    }
+
+    renderSessionBrowser(sessions) {
+        const list = document.getElementById('sessionBrowserList');
+        list.innerHTML = '';
+
+        if (sessions.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'session-browser-empty';
+            empty.textContent = 'No sessions found';
+            list.appendChild(empty);
+            return;
+        }
+
+        // Sort by lastActivity descending (most recent first)
+        const sorted = [...sessions].sort((a, b) => {
+            const ta = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
+            const tb = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
+            return tb - ta;
+        });
+
+        sorted.forEach(session => {
+            const item = document.createElement('div');
+            item.className = 'session-browser-item';
+            if (session.id === this.currentClaudeSessionId) {
+                item.classList.add('active');
+            }
+
+            const status = document.createElement('div');
+            status.className = 'session-browser-status';
+            status.classList.add(session.active ? 'active' : 'idle');
+
+            const info = document.createElement('div');
+            info.className = 'session-browser-info';
+            const name = document.createElement('div');
+            name.className = 'session-browser-name';
+            const folderName = session.workingDir ? session.workingDir.split('/').pop() || '/' : '';
+            const isDefault = session.name && session.name.startsWith('Session ') && session.name.includes(':');
+            name.textContent = !isDefault ? session.name : (folderName || session.name);
+            name.title = session.name;
+            const meta = document.createElement('div');
+            meta.className = 'session-browser-meta';
+            meta.textContent = session.workingDir || '';
+            info.appendChild(name);
+            info.appendChild(meta);
+
+            const time = document.createElement('div');
+            time.className = 'session-browser-time';
+            time.textContent = this.formatRelativeTime(session.lastActivity || session.created);
+
+            item.appendChild(status);
+            item.appendChild(info);
+            item.appendChild(time);
+
+            item.addEventListener('click', async () => {
+                this.hideSessionBrowser();
+                if (this.sessionTabManager) {
+                    // Add tab if not already present, then switch
+                    if (!this.sessionTabManager.tabs.has(session.id)) {
+                        this.sessionTabManager.addTab(session.id, session.name, session.active ? 'active' : 'idle', session.workingDir, false);
+                    }
+                    await this.sessionTabManager.switchToTab(session.id);
+                } else {
+                    await this.joinSession(session.id);
+                }
+            });
+
+            list.appendChild(item);
+        });
+    }
+
+    formatRelativeTime(dateStr) {
+        if (!dateStr) return '';
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffSec = Math.floor(diffMs / 1000);
+        const diffMin = Math.floor(diffSec / 60);
+        const diffHour = Math.floor(diffMin / 60);
+        const diffDay = Math.floor(diffHour / 24);
+
+        if (diffSec < 60) return 'just now';
+        if (diffMin < 60) return `${diffMin}m ago`;
+        if (diffHour < 24) return `${diffHour}h ago`;
+        if (diffDay < 7) return `${diffDay}d ago`;
+        return date.toLocaleDateString();
     }
     
     showNewSessionModal() {
