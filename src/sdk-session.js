@@ -42,7 +42,7 @@ class SdkSession {
     const {
       workingDir = process.cwd(),
       model = null,
-      permissionMode = 'bypassPermissions',
+      permissionMode = 'default',
       resumeSessionId = null,
       continueSession = false,
       onMessage = () => {},
@@ -99,10 +99,10 @@ class SdkSession {
     }
 
     // Permission mode
-    const permMode = options.permissionMode || 'bypassPermissions';
+    const permMode = options.permissionMode || 'default';
     args.push('--permission-mode', permMode);
 
-    console.log(`[SDK] Starting: claude ${args.join(' ')}`);
+    console.log(`[SDK] Starting: claude ${args.slice(0, 5).join(' ')}${args.length > 5 ? '...' : ''}`);
     console.log(`[SDK] Working dir: ${session.workingDir}`);
 
     const proc = spawn(this.command, args, {
@@ -141,7 +141,7 @@ class SdkSession {
           session.messageHistory.push(msg);
           // Keep history manageable
           if (session.messageHistory.length > 500) {
-            session.messageHistory = session.messageHistory.slice(-300);
+            session.messageHistory = session.messageHistory.slice(-400);
           }
 
           try { onMessage(msg); } catch (err) {
@@ -202,14 +202,15 @@ class SdkSession {
     if (!session) return;
 
     if (session.process) {
-      session.process.kill('SIGTERM');
+      const proc = session.process;
+      proc.kill('SIGTERM');
       // Force kill after 5s
       const killTimeout = setTimeout(() => {
         if (session.process) {
           try { session.process.kill('SIGKILL'); } catch (_) {}
         }
       }, 5000);
-      session.process.on('close', () => clearTimeout(killTimeout));
+      proc.on('close', () => clearTimeout(killTimeout));
     }
     session.active = false;
   }

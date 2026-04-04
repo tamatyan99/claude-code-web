@@ -63,7 +63,7 @@ body {
     max-height: 100dvh;
 }
 
-# Icon helpers
+/* Icon helpers */
 .icon {
     display: inline-flex;
     align-items: center;

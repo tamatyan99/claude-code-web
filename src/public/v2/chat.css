@@ -56,7 +56,8 @@ html, body {
 
 .header-right { display: flex; align-items: center; gap: 10px; }
 
-.model-select {
+.model-select,
+.permission-select {
     background: var(--bg-tertiary);
     color: var(--text-primary);
     border: 1px solid var(--border);
@@ -67,7 +68,12 @@ html, body {
     cursor: pointer;
     outline: none;
 }
-.model-select:focus { border-color: var(--accent); }
+.model-select:focus,
+.permission-select:focus { border-color: var(--accent); }
+
+.permission-select option[value="bypass"] {
+    color: var(--warning);
+}
 
 .status-dot {
     width: 10px;
@@ -172,6 +178,16 @@ html, body {
     padding: 0;
 }
 
+.msg-content strong {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.msg-content em {
+    font-style: italic;
+    color: var(--text-secondary);
+}
+
 /* Tool use cards */
 .tool-card {
     background: var(--bg-primary);
@@ -249,6 +265,37 @@ html, body {
     50% { opacity: 1; transform: scale(1); }
 }
 
+/* ── Reconnect Error ── */
+.reconnect-error {
+    max-width: 800px;
+    margin: 12px auto;
+    padding: 14px 18px;
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid var(--error);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+    color: var(--error);
+}
+
+.reconnect-retry-btn {
+    background: var(--error);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 12px;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: opacity 0.15s;
+}
+.reconnect-retry-btn:hover { opacity: 0.85; }
+
 /* ── Input Bar ── */
 .chat-input-bar {
     padding: 12px 16px;
@@ -314,4 +361,8 @@ html, body {
     .chat-messages { padding: 10px; }
     .msg { font-size: 14px; padding: 10px 12px; }
     .chat-input { font-size: 16px; } /* Prevent zoom on iOS */
+    .header-right { gap: 6px; }
+    .model-select,
+    .permission-select { font-size: 11px; padding: 3px 6px; }
+    .reconnect-error { flex-direction: column; text-align: center; }
 }

@@ -337,7 +337,7 @@ class UsageAnalytics extends EventEmitter {
     confidence += trendScore * 0.3;
     factors++;
     
-    return factors > 0 ? confidence / factors : 0;
+    return Math.min(Math.max(confidence, 0), 1);
   }
 
   /**

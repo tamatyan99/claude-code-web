@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Claude Code Web</title>
     <meta name="theme-color" content="#161b22">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -22,10 +22,15 @@
                 <span class="header-version">Chat</span>
             </div>
             <div class="header-right">
+                <!-- Model values are short names passed through to the CLI via --model flag -->
                 <select id="modelSelect" class="model-select" title="Switch model">
                     <option value="sonnet">Sonnet</option>
                     <option value="opus">Opus</option>
                     <option value="haiku">Haiku</option>
+                </select>
+                <select id="permissionSelect" class="permission-select" title="Permission mode">
+                    <option value="safe">Safe Mode</option>
+                    <option value="bypass">Bypass Permissions</option>
                 </select>
                 <span class="status-dot" id="statusDot" title="Disconnected"></span>
             </div>

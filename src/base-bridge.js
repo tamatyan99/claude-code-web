@@ -188,27 +188,35 @@ class BaseBridge {
       return;
     }
 
+    // Mark as stopping so no new input is sent, but don't delete yet
+    session.active = false;
+
     try {
       if (session.killTimeout) {
         clearTimeout(session.killTimeout);
         session.killTimeout = null;
       }
 
-      if (session.active && session.process) {
+      if (session.process) {
         session.process.kill('SIGTERM');
 
         session.killTimeout = setTimeout(() => {
-          if (session.active && session.process) {
-            session.process.kill('SIGKILL');
-          }
+          try {
+            if (session.process) {
+              session.process.kill('SIGKILL');
+            }
+          } catch (_) {}
+          // Clean up if process didn't exit gracefully
+          this.sessions.delete(sessionId);
         }, 5000);
+      } else {
+        // No process running, safe to delete immediately
+        this.sessions.delete(sessionId);
       }
     } catch (error) {
       console.warn(`Error stopping ${this.commandName} session ${sessionId}:`, error.message);
+      this.sessions.delete(sessionId);
     }
-
-    session.active = false;
-    this.sessions.delete(sessionId);
   }
 
   getSession(sessionId) {

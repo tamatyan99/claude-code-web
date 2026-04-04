@@ -6,6 +6,7 @@ class ChatUI {
         this.isProcessing = false;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
+        this.messageIdCounter = 0;
 
         this.messagesEl = document.getElementById('chatMessages');
         this.inputEl = document.getElementById('chatInput');
@@ -14,6 +15,7 @@ class ChatUI {
         this.statusText = document.getElementById('statusText');
         this.costDisplay = document.getElementById('costDisplay');
         this.modelSelect = document.getElementById('modelSelect');
+        this.permissionSelect = document.getElementById('permissionSelect');
         this.welcomeEl = document.getElementById('welcomeMessage');
 
         this.setupEvents();
@@ -47,16 +49,29 @@ class ChatUI {
             this.reconnectAttempts = 0;
             this.setStatus('connected', 'Connected');
 
-            // Create a session and start SDK mode
-            this.send({
-                type: 'create_session',
-                name: `Chat ${new Date().toLocaleString()}`,
-                workingDir: null
-            });
+            // Try to rejoin an existing session from sessionStorage
+            const savedSessionId = sessionStorage.getItem('ccw_sessionId');
+            if (savedSessionId) {
+                this.sessionId = savedSessionId;
+                this.send({ type: 'join_session', sessionId: this.sessionId });
+            } else {
+                // Create a new session
+                this.send({
+                    type: 'create_session',
+                    name: `Chat ${new Date().toLocaleString()}`,
+                    workingDir: null
+                });
+            }
         };
 
         this.socket.onmessage = (event) => {
-            this.handleMessage(JSON.parse(event.data));
+            try {
+                const msg = JSON.parse(event.data);
+                this.handleMessage(msg);
+            } catch (e) {
+                console.error('[Chat] Failed to parse message:', e);
+                return;
+            }
         };
 
         this.socket.onclose = () => {
@@ -66,6 +81,8 @@ class ChatUI {
                     this.reconnectAttempts++;
                     this.connect();
                 }, 1000 * Math.pow(2, this.reconnectAttempts));
+            } else {
+                this.showReconnectError();
             }
         };
 
@@ -87,15 +104,18 @@ class ChatUI {
 
             case 'session_created':
                 this.sessionId = msg.sessionId;
+                sessionStorage.setItem('ccw_sessionId', this.sessionId);
                 // Join and start SDK session
                 this.send({ type: 'join_session', sessionId: this.sessionId });
                 break;
 
             case 'session_joined':
-                // Start SDK mode
+                // Start SDK mode with permission setting
                 this.send({
                     type: 'start_sdk',
-                    options: { dangerouslySkipPermissions: true }
+                    options: {
+                        dangerouslySkipPermissions: this.permissionSelect.value === 'bypass'
+                    }
                 });
                 break;
 
@@ -130,7 +150,18 @@ class ChatUI {
                 break;
 
             case 'error':
-                this.appendSystemMessage(`Error: ${msg.message}`);
+                // If rejoin fails, create a new session
+                if (this.sessionId && msg.message && msg.message.includes('session')) {
+                    sessionStorage.removeItem('ccw_sessionId');
+                    this.sessionId = null;
+                    this.send({
+                        type: 'create_session',
+                        name: `Chat ${new Date().toLocaleString()}`,
+                        workingDir: null
+                    });
+                } else {
+                    this.appendSystemMessage(`Error: ${msg.message}`);
+                }
                 break;
         }
     }
@@ -191,9 +222,11 @@ class ChatUI {
                     this.costDisplay.textContent = `$${this.totalCost.toFixed(4)}`;
                 }
                 if (msg.result) {
-                    // If there's a final text result not yet shown
-                    const lastMsg = this.messagesEl.querySelector('.msg-assistant:last-of-type .msg-content');
-                    if (!lastMsg || !lastMsg.textContent.includes(msg.result.substring(0, 50))) {
+                    // Deduplicate: check last assistant message by tracking data attribute
+                    const allAssistant = this.messagesEl.querySelectorAll('.msg-assistant');
+                    const lastAssistantMsg = allAssistant.length > 0 ? allAssistant[allAssistant.length - 1] : null;
+                    const lastContent = lastAssistantMsg ? lastAssistantMsg.querySelector('.msg-content') : null;
+                    if (!lastContent || !lastContent.textContent.includes(msg.result.substring(0, 50))) {
                         this.appendAssistantMessage(msg.result);
                     }
                 }
@@ -261,17 +294,15 @@ class ChatUI {
     }
 
     appendAssistantMessage(text) {
-        // Check if we can append to the last assistant message
-        const last = this.messagesEl.querySelector('.msg-assistant:last-child .msg-content');
-
         const el = document.createElement('div');
         el.className = 'msg msg-assistant';
+        el.dataset.msgId = ++this.messageIdCounter;
         const role = document.createElement('div');
         role.className = 'msg-role assistant';
         role.textContent = 'Claude';
         const content = document.createElement('div');
         content.className = 'msg-content';
-        content.innerHTML = this.renderMarkdown(text);
+        content.appendChild(this.renderMarkdownSafe(text));
         el.appendChild(role);
         el.appendChild(content);
         this.messagesEl.appendChild(el);
@@ -284,7 +315,16 @@ class ChatUI {
 
         const header = document.createElement('div');
         header.className = 'tool-card-header';
-        header.innerHTML = `<span class="tool-card-icon">&#9881;</span> ${this.escapeHtml(toolName)}`;
+
+        const icon = document.createElement('span');
+        icon.className = 'tool-card-icon';
+        icon.textContent = '\u2699';
+        header.appendChild(icon);
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = ' ' + toolName;
+        header.appendChild(nameSpan);
+
         header.addEventListener('click', () => card.classList.toggle('expanded'));
 
         const body = document.createElement('div');
@@ -329,7 +369,11 @@ class ChatUI {
             if (msg.usage.output_tokens) parts.push(`Out: ${msg.usage.output_tokens}`);
         }
         if (msg.model) parts.push(`Model: ${msg.model}`);
-        el.innerHTML = parts.map(p => `<span>${this.escapeHtml(p)}</span>`).join('');
+        for (const p of parts) {
+            const span = document.createElement('span');
+            span.textContent = p;
+            el.appendChild(span);
+        }
         this.messagesEl.appendChild(el);
         this.scrollToBottom();
     }
@@ -351,7 +395,9 @@ class ChatUI {
         const el = document.createElement('div');
         el.className = 'typing-indicator';
         el.id = 'typingIndicator';
-        el.innerHTML = '<span></span><span></span><span></span>';
+        for (let i = 0; i < 3; i++) {
+            el.appendChild(document.createElement('span'));
+        }
         this.messagesEl.appendChild(el);
         this.scrollToBottom();
     }
@@ -359,6 +405,32 @@ class ChatUI {
     removeTypingIndicator() {
         const el = document.getElementById('typingIndicator');
         if (el) el.remove();
+    }
+
+    showReconnectError() {
+        const existing = document.getElementById('reconnectError');
+        if (existing) existing.remove();
+
+        const el = document.createElement('div');
+        el.className = 'reconnect-error';
+        el.id = 'reconnectError';
+
+        const msgSpan = document.createElement('span');
+        msgSpan.textContent = 'Connection lost. Could not reconnect after multiple attempts.';
+        el.appendChild(msgSpan);
+
+        const retryBtn = document.createElement('button');
+        retryBtn.className = 'reconnect-retry-btn';
+        retryBtn.textContent = 'Retry';
+        retryBtn.addEventListener('click', () => {
+            el.remove();
+            this.reconnectAttempts = 0;
+            this.connect();
+        });
+        el.appendChild(retryBtn);
+
+        this.messagesEl.appendChild(el);
+        this.scrollToBottom();
     }
 
     scrollToBottom() {
@@ -400,6 +472,78 @@ class ChatUI {
         html = html.replace(/\n/g, '<br>');
 
         return html;
+    }
+
+    /**
+     * Safe markdown renderer that returns a DocumentFragment using DOM APIs
+     * instead of innerHTML. Handles code blocks, inline code, bold, italic,
+     * and line breaks.
+     */
+    renderMarkdownSafe(text) {
+        const fragment = document.createDocumentFragment();
+
+        // First, split out fenced code blocks
+        const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
+        let lastIndex = 0;
+        let match;
+
+        while ((match = codeBlockRegex.exec(text)) !== null) {
+            // Render inline content before this code block
+            if (match.index > lastIndex) {
+                this._renderInlineSegments(fragment, text.substring(lastIndex, match.index));
+            }
+
+            // Create <pre><code> for the code block
+            const pre = document.createElement('pre');
+            const code = document.createElement('code');
+            code.textContent = match[2];
+            pre.appendChild(code);
+            fragment.appendChild(pre);
+
+            lastIndex = match.index + match[0].length;
+        }
+
+        // Render any remaining text after the last code block
+        if (lastIndex < text.length) {
+            this._renderInlineSegments(fragment, text.substring(lastIndex));
+        }
+
+        return fragment;
+    }
+
+    /**
+     * Render inline markdown (inline code, bold, italic, plain text with newlines)
+     * into the given parent node using safe DOM operations.
+     */
+    _renderInlineSegments(parent, text) {
+        // Pattern matches: inline code, bold, italic, or plain text/newlines
+        const inlineRegex = /`([^`]+)`|\*\*(.+?)\*\*|(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|(\n)|([^`*\n]+)/g;
+        let m;
+
+        while ((m = inlineRegex.exec(text)) !== null) {
+            if (m[1] !== undefined) {
+                // Inline code
+                const code = document.createElement('code');
+                code.textContent = m[1];
+                parent.appendChild(code);
+            } else if (m[2] !== undefined) {
+                // Bold
+                const strong = document.createElement('strong');
+                strong.textContent = m[2];
+                parent.appendChild(strong);
+            } else if (m[3] !== undefined) {
+                // Italic
+                const em = document.createElement('em');
+                em.textContent = m[3];
+                parent.appendChild(em);
+            } else if (m[4] !== undefined) {
+                // Newline -> <br>
+                parent.appendChild(document.createElement('br'));
+            } else if (m[5] !== undefined) {
+                // Plain text
+                parent.appendChild(document.createTextNode(m[5]));
+            }
+        }
     }
 }
 

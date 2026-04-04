@@ -26,6 +26,11 @@ class ClaudeBridge extends BaseBridge {
       }, 500);
     }
   }
+
+  async stopSession(sessionId) {
+    this._trustPromptHandled.delete(sessionId);
+    return super.stopSession(sessionId);
+  }
 }
 
 module.exports = ClaudeBridge;
