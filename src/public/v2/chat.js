@@ -16,6 +16,16 @@ class ChatUI {
         this.modelSelect = document.getElementById('modelSelect');
         this.welcomeEl = document.getElementById('welcomeMessage');
 
+        // Usage bar elements
+        this.usageTimer = document.getElementById('usageTimer');
+        this.usageTokens = document.getElementById('usageTokens');
+        this.usageProgressFill = document.getElementById('usageProgressFill');
+        this.usageCost = document.getElementById('usageCost');
+        this.usageRate = document.getElementById('usageRate');
+        this.usagePollingInterval = null;
+        this.usageTimerInterval = null;
+        this.lastSessionTimer = null;
+
         this.setupEvents();
         this.connect();
     }
@@ -101,6 +111,7 @@ class ChatUI {
 
             case 'sdk_started':
                 this.setStatus('connected', 'Ready');
+                this.startUsagePolling();
                 break;
 
             case 'sdk_processing':
@@ -127,6 +138,10 @@ class ChatUI {
                 this.sendBtn.disabled = false;
                 this.removeTypingIndicator();
                 this.appendSystemMessage(`Error: ${msg.message}`);
+                break;
+
+            case 'usage_update':
+                this.updateUsageDisplay(msg);
                 break;
 
             case 'error':
@@ -376,6 +391,90 @@ class ChatUI {
         const div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
+    }
+
+    // ── Usage display ──
+
+    startUsagePolling() {
+        // Request usage immediately
+        this.requestUsage();
+        // Poll every 10 seconds
+        if (this.usagePollingInterval) clearInterval(this.usagePollingInterval);
+        this.usagePollingInterval = setInterval(() => this.requestUsage(), 10000);
+        // Update timer display every second
+        if (this.usageTimerInterval) clearInterval(this.usageTimerInterval);
+        this.usageTimerInterval = setInterval(() => this.updateTimerDisplay(), 1000);
+    }
+
+    requestUsage() {
+        this.send({ type: 'get_usage' });
+    }
+
+    updateUsageDisplay(data) {
+        const session = data.sessionStats;
+        const timer = data.sessionTimer;
+        const limits = data.limits;
+
+        // Update cost
+        if (session && session.totalCost != null) {
+            this.usageCost.textContent = `$${session.totalCost.toFixed(2)}`;
+        }
+
+        // Update tokens
+        if (session) {
+            const total = (session.inputTokens || 0) + (session.outputTokens || 0);
+            const limit = limits ? limits.tokens : 0;
+            if (limit > 0) {
+                const pct = Math.min((total / limit) * 100, 100);
+                this.usageTokens.textContent = `${this.formatTokens(total)} / ${this.formatTokens(limit)}`;
+                this.usageProgressFill.style.width = pct + '%';
+                this.usageProgressFill.className = 'usage-progress-fill' +
+                    (pct >= 90 ? ' danger' : pct >= 70 ? ' warning' : '');
+            } else {
+                this.usageTokens.textContent = this.formatTokens(total);
+                this.usageProgressFill.style.width = '0%';
+            }
+        }
+
+        // Update burn rate
+        if (data.burnRate && data.burnRate.rate > 0) {
+            this.usageRate.textContent = `${Math.round(data.burnRate.rate)} tok/min`;
+        }
+
+        // Store timer info for countdown
+        if (timer) {
+            this.lastSessionTimer = timer;
+        }
+    }
+
+    updateTimerDisplay() {
+        if (!this.lastSessionTimer) return;
+
+        const t = this.lastSessionTimer;
+        const elapsed = Date.now() - new Date(t.startTime).getTime();
+        const durationMs = (t.sessionDurationHours || 5) * 3600000;
+        const remaining = Math.max(durationMs - elapsed, 0);
+
+        const hrs = Math.floor(remaining / 3600000);
+        const mins = Math.floor((remaining % 3600000) / 60000);
+        const secs = Math.floor((remaining % 60000) / 1000);
+
+        this.usageTimer.textContent = `${hrs}h ${String(mins).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s`;
+
+        if (remaining <= 0) {
+            this.usageTimer.textContent = 'Expired';
+            this.usageTimer.style.color = 'var(--error)';
+        } else if (remaining < 1800000) {
+            this.usageTimer.style.color = 'var(--warning)';
+        } else {
+            this.usageTimer.style.color = '';
+        }
+    }
+
+    formatTokens(n) {
+        if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+        if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+        return String(n);
     }
 
     renderMarkdown(text) {

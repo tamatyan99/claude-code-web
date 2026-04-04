@@ -84,6 +84,82 @@ html, body {
     50% { opacity: 0.4; }
 }
 
+/* ── Usage Bar ── */
+.usage-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 6px 16px;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    flex-shrink: 0;
+    overflow-x: auto;
+}
+
+.usage-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.usage-label {
+    color: var(--text-secondary);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.usage-value {
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+.usage-tokens {
+    flex: 1;
+    min-width: 120px;
+    max-width: 300px;
+}
+
+.usage-progress-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.usage-progress {
+    flex: 1;
+    height: 6px;
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+    overflow: hidden;
+    min-width: 60px;
+}
+
+.usage-progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.5s ease, background 0.3s;
+    width: 0%;
+}
+
+.usage-progress-fill.warning {
+    background: var(--warning);
+}
+
+.usage-progress-fill.danger {
+    background: var(--error);
+}
+
+@media (max-width: 600px) {
+    .usage-bar { gap: 10px; padding: 6px 10px; }
+    .usage-cost, .usage-rate { display: none; }
+}
+
 /* ── Messages ── */
 .chat-messages {
     flex: 1;
