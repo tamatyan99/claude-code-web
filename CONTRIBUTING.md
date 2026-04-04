@@ -5,11 +5,10 @@ Thanks for your interest in contributing! This guide covers setup, development, 
 ## Project Structure
 
 - `bin/cc-web.js`: CLI entry; parses flags and starts the server.
-- `src/server.js`: Express + WebSocket server, routes (`/` → Chat UI, `/v1` → Terminal UI), session wiring.
+- `src/server.js`: Express + WebSocket server, routes (`/` → Chat UI), session wiring.
 - `src/sdk-session.js`: SDK mode — spawns `claude -p --output-format stream-json`, parses JSONL.
-- `src/base-bridge.js`, `src/claude-bridge.js`, `src/codex-bridge.js`, `src/agent-bridge.js`: Legacy PTY mode via `node-pty`.
+- `src/usage-reader.js`, `src/usage-analytics.js`: Usage tracking and cost analytics.
 - `src/public/v2/`: Chat UI assets (chat.js, chat.css, index.html).
-- `src/public/`: Terminal UI assets (app.js, session-manager.js, plan-detector.js, etc.).
 - `src/utils/session-store.js`: Session persistence to disk.
 - `test/*.test.js`: Mocha unit tests.
 
@@ -30,7 +29,7 @@ npm run dev           # or: npm start
 - Dev mode: `npm run dev` (extra logging).
 - Normal mode: `npm start`.
 - Custom port: `node bin/cc-web.js --port 8080`.
-- Access Chat UI at `http://localhost:32352/`, Terminal UI at `http://localhost:32352/v1`.
+- Access Chat UI at `http://localhost:32352/`.
 
 ## Testing
 
@@ -64,12 +63,11 @@ Follow Conventional Commits:
 
 ## Architecture Notes
 
-The project has two execution modes:
+The project uses SDK mode exclusively:
 
-1. **SDK Mode** (Chat UI at `/`): `SdkSession` spawns `claude -p --output-format stream-json`. Outputs structured JSONL messages. Client renders Markdown + tool cards.
-2. **PTY Mode** (Terminal UI at `/v1`): `BaseBridge` spawns CLI via node-pty. Outputs raw ANSI. Client renders via xterm.js.
+- **SDK Mode** (Chat UI at `/`): `SdkSession` spawns `claude -p --output-format stream-json`. Outputs structured JSONL messages. Client renders Markdown + tool cards.
 
-Both modes share the same Express server, WebSocket layer, and session management.
+All sessions share the same Express server, WebSocket layer, and session management.
 
 ## Releasing
 

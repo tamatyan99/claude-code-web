@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.5.0] - 2026-04-04
+
+### Removed
+- **v1 Terminal UI and PTY bridge layer**: Removed the legacy xterm.js-based terminal interface (`/v1` route) and all associated PTY bridge code (`base-bridge.js`, `claude-bridge.js`, `codex-bridge.js`, `agent-bridge.js`). Only the Chat UI (SDK mode) remains.
+- Removed legacy Terminal UI client files: `app.js`, `session-manager.js`, `plan-detector.js`, `agent-tracker.js`, `splits.js`, and related assets from `src/public/`.
+
+### Fixed
+- **Security and stability**: Addressed 50+ issues identified in a comprehensive code review, including WebSocket authentication, CORS hardening, input validation improvements, and memory leak fixes.
+
+### Changed
+- **Server refactoring**: Extracted route handlers, consolidated session wiring, and simplified WebSocket message dispatch now that only SDK mode is supported.
+- **Test coverage expansion**: Expanded test suite to 6 test suites covering 107 tests.
+
+### Notes
+- The Chat UI at `/` (SDK mode) is unchanged and remains the sole interface.
+- Sessions, persistence, and usage analytics are unaffected by the removal of PTY mode.
+
 ## [3.4.0] - 2025-10-23
 
 ### Added

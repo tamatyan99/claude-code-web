@@ -67,6 +67,8 @@ npm start -- --https --cert cert.pem --key key.pem
 - Auto-save sessions every 30 seconds
 - WebSocket message type validation
 - SDK handlers: `start_sdk`, `sdk_prompt` → SdkSession
+- REST routes extracted to `src/routes/api.js`
+- WebSocket handlers extracted to `src/routes/websocket.js`
 
 **SDK Session (src/sdk-session.js)**
 - Spawns `claude -p --output-format stream-json` as a child process
@@ -127,6 +129,9 @@ claude-code-web/
 │   ├── sdk-session.js         # SDK mode: claude -p --output-format stream-json
 │   ├── usage-reader.js        # Claude usage log parser
 │   ├── usage-analytics.js     # Usage analytics and predictions
+│   ├── routes/
+│   │   ├── api.js             # REST API route handlers
+│   │   └── websocket.js       # WebSocket message handlers
 │   ├── utils/
 │   │   └── session-store.js   # Session persistence to disk
 │   └── public/
@@ -136,7 +141,7 @@ claude-code-web/
 │       │   └── chat.css
 │       ├── service-worker.js  # PWA support
 │       └── manifest.json      # PWA manifest
-├── test/                      # Unit tests
+├── test/                      # Unit tests (sdk-session, server-alias, session-store, usage-analytics, usage-reader, validation)
 ├── docs/                      # GitHub Pages site
 └── package.json
 ```

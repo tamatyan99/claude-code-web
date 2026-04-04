@@ -115,7 +115,7 @@ The interface shows comprehensive usage information:
    - Session management
    - Plan configuration
 
-4. **Client Display** (`src/public/v2/chat.js` — default; `src/public/app.js` — legacy terminal UI)
+4. **Client Display** (`src/public/v2/chat.js`)
    - Dynamic UI updates
    - Progress bar rendering
    - Mobile-responsive design
@@ -143,7 +143,7 @@ Returns:
   "sessionTimer": { /* timer information */ },
   "analytics": { /* advanced analytics */ },
   "burnRate": { /* burn rate data */ },
-  "plan": "claude-pro",
+  "plan": "max20",
   "limits": { /* plan limits */ }
 }
 ```
