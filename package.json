@@ -1,7 +1,7 @@
 {
   "name": "claude-code-web",
   "version": "3.4.0",
-  "description": "Web-based chat and terminal interface for Claude Code CLI with structured JSON output, multi-session support, and mobile optimization",
+  "description": "Web-based chat interface for Claude Code CLI with structured JSON output, multi-session support, and mobile optimization",
   "main": "src/server.js",
   "bin": {
     "cc-web": "./bin/cc-web.js"
@@ -16,12 +16,12 @@
     "claude",
     "claude-code",
     "web",
-    "terminal",
+
     "browser",
     "remote",
     "ai"
   ],
-  "author": "Your Name",
+  "author": "",
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/claude-code": "^2.1.92",
@@ -29,7 +29,7 @@
     "commander": "^12.1.0",
     "cors": "^2.8.5",
     "express": "^4.19.2",
-    "node-pty": "^1.0.0",
+
     "open": "^10.1.0",
     "uuid": "^10.0.0",
     "ws": "^8.18.0"

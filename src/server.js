@@ -6,9 +6,6 @@ const path = require('path');
 const WebSocket = require('ws');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
-const ClaudeBridge = require('./claude-bridge');
-const CodexBridge = require('./codex-bridge');
-const AgentBridge = require('./agent-bridge');
 const SdkSession = require('./sdk-session');
 const SessionStore = require('./utils/session-store');
 const UsageReader = require('./usage-reader');
@@ -30,9 +27,6 @@ class ClaudeCodeWebServer {
     this.app = express();
     this.claudeSessions = new Map(); // Persistent sessions (claude, codex, or agent)
     this.webSocketConnections = new Map(); // Maps WebSocket connection ID to session info
-    this.claudeBridge = new ClaudeBridge();
-    this.codexBridge = new CodexBridge();
-    this.agentBridge = new AgentBridge();
     this.sdkSession = new SdkSession();
     this.sessionStore = new SessionStore();
     this.usageReader = new UsageReader(this.sessionDurationHours);
@@ -43,13 +37,8 @@ class ClaudeCodeWebServer {
     });
     this.autoSaveInterval = null;
     this.startTime = Date.now(); // Track server start time
-    this.isShuttingDown = false; // Flag to prevent duplicate shutdown
-    // Commands dropdown removed
-    // Assistant aliases (for UI display only)
     this.aliases = {
-      claude: options.claudeAlias || process.env.CLAUDE_ALIAS || 'Claude',
-      codex: options.codexAlias || process.env.CODEX_ALIAS || 'Codex',
-      agent: options.agentAlias || process.env.AGENT_ALIAS || 'Cursor'
+      claude: options.claudeAlias || process.env.CLAUDE_ALIAS || 'Claude'
     };
     
     this.setupExpress();
@@ -59,10 +48,12 @@ class ClaudeCodeWebServer {
   
   async loadPersistedSessions() {
     try {
-      const sessions = await this.sessionStore.loadSessions();
-      this.claudeSessions = sessions;
-      if (sessions.size > 0) {
-        console.log(`Loaded ${sessions.size} persisted sessions`);
+      const loaded = await this.sessionStore.loadSessions();
+      if (loaded.size > 0) {
+        for (const [k, v] of loaded) {
+          this.claudeSessions.set(k, v);
+        }
+        console.log(`Loaded ${loaded.size} persisted sessions`);
       }
     } catch (error) {
       console.error('Failed to load persisted sessions:', error);
@@ -74,11 +65,6 @@ class ClaudeCodeWebServer {
     this.autoSaveInterval = setInterval(() => {
       this.saveSessionsToDisk();
     }, 30000);
-    
-    // Also save on process exit
-    process.on('SIGINT', () => this.handleShutdown());
-    process.on('SIGTERM', () => this.handleShutdown());
-    process.on('beforeExit', () => this.saveSessionsToDisk());
   }
   
   async saveSessionsToDisk() {
@@ -87,27 +73,12 @@ class ClaudeCodeWebServer {
     }
   }
   
-  async handleShutdown() {
-    // Prevent multiple shutdown attempts
-    if (this.isShuttingDown) {
-      return;
-    }
-    this.isShuttingDown = true;
-
-    console.log('\nGracefully shutting down...');
-    await this.saveSessionsToDisk();
-    if (this.autoSaveInterval) {
-      clearInterval(this.autoSaveInterval);
-    }
-    this.close();
-    process.exit(0);
-  }
 
   isPathWithinBase(targetPath) {
     try {
       const resolvedTarget = path.resolve(targetPath);
       const resolvedBase = path.resolve(this.baseFolder);
-      return resolvedTarget.startsWith(resolvedBase);
+      return resolvedTarget === resolvedBase || resolvedTarget.startsWith(resolvedBase + path.sep);
     } catch (error) {
       return false;
     }
@@ -139,20 +110,14 @@ class ClaudeCodeWebServer {
       res.setHeader('Content-Type', 'application/manifest+json');
       res.sendFile(path.join(__dirname, 'public', 'manifest.json'));
     });
-    
-    // Default: v2 Chat UI at /
+
+    // Chat UI at /
     this.app.get('/', (req, res) => {
       res.sendFile(path.join(__dirname, 'public', 'v2', 'index.html'));
     });
-    this.app.use('/v2', express.static(path.join(__dirname, 'public', 'v2')));
+    this.app.use(express.static(path.join(__dirname, 'public', 'v2')));
 
-    // Legacy terminal UI at /v1
-    this.app.get('/v1', (req, res) => {
-      res.sendFile(path.join(__dirname, 'public', 'index.html'));
-    });
-    this.app.use('/v1', express.static(path.join(__dirname, 'public')));
-
-    // Static assets from public/ (icons, manifest, service-worker, etc.)
+    // Static assets from public/ (manifest, service-worker, etc.)
     this.app.use(express.static(path.join(__dirname, 'public')));
 
     // PWA Icon routes - generate icons dynamically
@@ -290,9 +255,9 @@ class ClaudeCodeWebServer {
         return res.status(404).json({ error: 'Session not found' });
       }
       
-      // Stop Claude process if running
-      if (session.active) {
-        this.claudeBridge.stopSession(sessionId);
+      // Stop the running SDK process if active
+      if (session.active && session.agent === 'sdk') {
+        this.sdkSession.stopSession(sessionId);
       }
       
       // Disconnect all WebSocket connections for this session
@@ -510,9 +475,6 @@ class ClaudeCodeWebServer {
       }
     });
 
-    this.app.get('/', (req, res) => {
-      res.sendFile(path.join(__dirname, 'public', 'index.html'));
-    });
   }
 
   async start() {
@@ -636,16 +598,6 @@ class ClaudeCodeWebServer {
         await this.leaveClaudeSession(wsId);
         break;
 
-      case 'start_claude':
-        await this.startClaude(wsId, data.options || {});
-        break;
-      case 'start_codex':
-        await this.startCodex(wsId, data.options || {});
-        break;
-      case 'start_agent':
-        await this.startAgent(wsId, data.options || {});
-        break;
-
       case 'start_sdk':
         await this.startSdkSession(wsId, data.options || {});
         break;
@@ -655,73 +607,18 @@ class ClaudeCodeWebServer {
         break;
 
       case 'input':
-        if (wsInfo.claudeSessionId) {
-          // Verify the session exists and the WebSocket is part of it
-          const session = this.claudeSessions.get(wsInfo.claudeSessionId);
-          if (session && session.connections.has(wsId)) {
-            // Only send if an agent is running in this session
-            if (session.active && session.agent) {
-              try {
-                if (session.agent === 'codex') {
-                  await this.codexBridge.sendInput(wsInfo.claudeSessionId, data.data);
-                } else if (session.agent === 'agent') {
-                  await this.agentBridge.sendInput(wsInfo.claudeSessionId, data.data);
-                } else {
-                  await this.claudeBridge.sendInput(wsInfo.claudeSessionId, data.data);
-                }
-              } catch (error) {
-                if (this.dev) {
-                  console.error(`Failed to send input to session ${wsInfo.claudeSessionId}:`, error.message);
-                }
-                this.sendToWebSocket(wsInfo.ws, {
-                  type: 'error',
-                  message: 'Agent is not running in this session. Please start an agent first.'
-                });
-              }
-            } else {
-              this.sendToWebSocket(wsInfo.ws, {
-                type: 'info',
-                message: 'No agent is running. Choose an option to start.'
-              });
-            }
-          }
-        }
-        break;
-      
       case 'resize':
-        if (wsInfo.claudeSessionId) {
-          // Verify the session exists and the WebSocket is part of it
-          const session = this.claudeSessions.get(wsInfo.claudeSessionId);
-          if (session && session.connections.has(wsId)) {
-            // Only resize if an agent is actually running
-            if (session.active && session.agent) {
-              try {
-                if (session.agent === 'codex') {
-                  await this.codexBridge.resize(wsInfo.claudeSessionId, data.cols, data.rows);
-                } else if (session.agent === 'agent') {
-                  await this.agentBridge.resize(wsInfo.claudeSessionId, data.cols, data.rows);
-                } else {
-                  await this.claudeBridge.resize(wsInfo.claudeSessionId, data.cols, data.rows);
-                }
-              } catch (error) {
-                if (this.dev) {
-                  console.log(`Resize ignored - agent not active in session ${wsInfo.claudeSessionId}`);
-                }
-              }
-            }
-          }
-        }
         break;
       
       case 'stop':
         if (wsInfo.claudeSessionId) {
           const session = this.claudeSessions.get(wsInfo.claudeSessionId);
-          if (session?.agent === 'codex') {
-            await this.stopCodex(wsInfo.claudeSessionId);
-          } else if (session?.agent === 'agent') {
-            await this.stopAgent(wsInfo.claudeSessionId);
-          } else {
-            await this.stopClaude(wsInfo.claudeSessionId);
+          if (session?.agent === 'sdk') {
+            this.sdkSession.stopSession(wsInfo.claudeSessionId);
+            session.active = false;
+            session.agent = null;
+            session.lastActivity = new Date();
+            this.broadcastToSession(wsInfo.claudeSessionId, { type: 'sdk_done' });
           }
         }
         break;
@@ -852,289 +749,6 @@ class ClaudeCodeWebServer {
     this.sendToWebSocket(wsInfo.ws, {
       type: 'session_left'
     });
-  }
-
-  async startClaude(wsId, options) {
-    const wsInfo = this.webSocketConnections.get(wsId);
-    if (!wsInfo || !wsInfo.claudeSessionId) {
-      this.sendToWebSocket(wsInfo.ws, {
-        type: 'error',
-        message: 'No session joined'
-      });
-      return;
-    }
-
-    const session = this.claudeSessions.get(wsInfo.claudeSessionId);
-    if (!session) return;
-
-    if (session.active) {
-      this.sendToWebSocket(wsInfo.ws, {
-        type: 'error',
-        message: 'An agent is already running in this session'
-      });
-      return;
-    }
-
-    // Capture the session ID to avoid closure issues
-    const sessionId = wsInfo.claudeSessionId;
-    
-    try {
-      await this.claudeBridge.startSession(sessionId, {
-        workingDir: session.workingDir,
-        dangerouslySkipPermissions: !!options.dangerouslySkipPermissions,
-        cols: options.cols,
-        rows: options.rows,
-        onOutput: (data) => {
-          // Get the current session again to ensure we have the right reference
-          const currentSession = this.claudeSessions.get(sessionId);
-          if (!currentSession) return;
-
-          // Add to buffer
-          currentSession.outputBuffer.push(data);
-          if (currentSession.outputBuffer.length > currentSession.maxBufferSize) {
-            currentSession.outputBuffer.shift();
-          }
-
-          // Broadcast to all connected clients for THIS specific session
-          this.broadcastToSession(sessionId, {
-            type: 'output',
-            data
-          });
-        },
-        onExit: (code, signal) => {
-          const currentSession = this.claudeSessions.get(sessionId);
-          if (currentSession) {
-            currentSession.active = false;
-          }
-          this.broadcastToSession(sessionId, {
-            type: 'exit',
-            code,
-            signal
-          });
-        },
-        onError: (error) => {
-          const currentSession = this.claudeSessions.get(sessionId);
-          if (currentSession) {
-            currentSession.active = false;
-          }
-          this.broadcastToSession(sessionId, {
-            type: 'error',
-            message: error.message
-          });
-        }
-      });
-
-      session.active = true;
-      session.agent = 'claude';
-      session.lastActivity = new Date();
-      // Set session start time if this is the first time Claude is started in this session
-      if (!session.sessionStartTime) {
-        session.sessionStartTime = new Date();
-      }
-
-      this.broadcastToSession(sessionId, {
-        type: 'claude_started',
-        sessionId: sessionId
-      });
-
-    } catch (error) {
-      if (this.dev) {
-        console.error(`Error starting Claude in session ${wsInfo.claudeSessionId}:`, error);
-      }
-      this.sendToWebSocket(wsInfo.ws, {
-        type: 'error',
-        message: `Failed to start Claude Code: ${error.message}`
-      });
-    }
-  }
-
-  async stopClaude(claudeSessionId) {
-    const session = this.claudeSessions.get(claudeSessionId);
-    if (!session || !session.active) return;
-
-    await this.claudeBridge.stopSession(claudeSessionId);
-    session.active = false;
-    session.agent = null;
-    session.lastActivity = new Date();
-
-    this.broadcastToSession(claudeSessionId, {
-      type: 'claude_stopped'
-    });
-  }
-
-  async startCodex(wsId, options) {
-    const wsInfo = this.webSocketConnections.get(wsId);
-    if (!wsInfo || !wsInfo.claudeSessionId) {
-      this.sendToWebSocket(wsInfo.ws, {
-        type: 'error',
-        message: 'No session joined'
-      });
-      return;
-    }
-
-    const session = this.claudeSessions.get(wsInfo.claudeSessionId);
-    if (!session) return;
-
-    if (session.active) {
-      this.sendToWebSocket(wsInfo.ws, {
-        type: 'error',
-        message: 'An agent is already running in this session'
-      });
-      return;
-    }
-
-    const sessionId = wsInfo.claudeSessionId;
-    try {
-      await this.codexBridge.startSession(sessionId, {
-        workingDir: session.workingDir,
-        dangerouslySkipPermissions: !!options.dangerouslySkipPermissions,
-        cols: options.cols,
-        rows: options.rows,
-        onOutput: (data) => {
-          const currentSession = this.claudeSessions.get(sessionId);
-          if (!currentSession) return;
-          currentSession.outputBuffer.push(data);
-          if (currentSession.outputBuffer.length > currentSession.maxBufferSize) {
-            currentSession.outputBuffer.shift();
-          }
-          this.broadcastToSession(sessionId, { type: 'output', data });
-        },
-        onExit: (code, signal) => {
-          const currentSession = this.claudeSessions.get(sessionId);
-          if (currentSession) {
-            currentSession.active = false;
-            currentSession.agent = null;
-          }
-          this.broadcastToSession(sessionId, { type: 'exit', code, signal });
-        },
-        onError: (error) => {
-          const currentSession = this.claudeSessions.get(sessionId);
-          if (currentSession) {
-            currentSession.active = false;
-            currentSession.agent = null;
-          }
-          this.broadcastToSession(sessionId, { type: 'error', message: error.message });
-        }
-      });
-
-      session.active = true;
-      session.agent = 'codex';
-      session.lastActivity = new Date();
-      if (!session.sessionStartTime) {
-        session.sessionStartTime = new Date();
-      }
-
-      this.broadcastToSession(sessionId, {
-        type: 'codex_started',
-        sessionId: sessionId
-      });
-
-    } catch (error) {
-      if (this.dev) {
-        console.error(`Error starting Codex in session ${wsInfo.claudeSessionId}:`, error);
-      }
-      this.sendToWebSocket(wsInfo.ws, {
-        type: 'error',
-        message: `Failed to start Codex Code: ${error.message}`
-      });
-    }
-  }
-
-  async stopCodex(sessionId) {
-    const session = this.claudeSessions.get(sessionId);
-    if (!session || !session.active) return;
-    await this.codexBridge.stopSession(sessionId);
-    session.active = false;
-    session.agent = null;
-    session.lastActivity = new Date();
-    this.broadcastToSession(sessionId, { type: 'codex_stopped' });
-  }
-
-  async startAgent(wsId, options) {
-    const wsInfo = this.webSocketConnections.get(wsId);
-    if (!wsInfo || !wsInfo.claudeSessionId) {
-      this.sendToWebSocket(wsInfo.ws, {
-        type: 'error',
-        message: 'No session joined'
-      });
-      return;
-    }
-
-    const session = this.claudeSessions.get(wsInfo.claudeSessionId);
-    if (!session) return;
-
-    if (session.active) {
-      this.sendToWebSocket(wsInfo.ws, {
-        type: 'error',
-        message: 'An agent is already running in this session'
-      });
-      return;
-    }
-
-    const sessionId = wsInfo.claudeSessionId;
-    try {
-      await this.agentBridge.startSession(sessionId, {
-        workingDir: session.workingDir,
-        cols: options.cols,
-        rows: options.rows,
-        onOutput: (data) => {
-          const currentSession = this.claudeSessions.get(sessionId);
-          if (!currentSession) return;
-          currentSession.outputBuffer.push(data);
-          if (currentSession.outputBuffer.length > currentSession.maxBufferSize) {
-            currentSession.outputBuffer.shift();
-          }
-          this.broadcastToSession(sessionId, { type: 'output', data });
-        },
-        onExit: (code, signal) => {
-          const currentSession = this.claudeSessions.get(sessionId);
-          if (currentSession) {
-            currentSession.active = false;
-            currentSession.agent = null;
-          }
-          this.broadcastToSession(sessionId, { type: 'exit', code, signal });
-        },
-        onError: (error) => {
-          const currentSession = this.claudeSessions.get(sessionId);
-          if (currentSession) {
-            currentSession.active = false;
-            currentSession.agent = null;
-          }
-          this.broadcastToSession(sessionId, { type: 'error', message: error.message });
-        }
-      });
-
-      session.active = true;
-      session.agent = 'agent';
-      session.lastActivity = new Date();
-      if (!session.sessionStartTime) {
-        session.sessionStartTime = new Date();
-      }
-
-      this.broadcastToSession(sessionId, {
-        type: 'agent_started',
-        sessionId: sessionId
-      });
-
-    } catch (error) {
-      if (this.dev) {
-        console.error(`Error starting Agent in session ${wsInfo.claudeSessionId}:`, error);
-      }
-      this.sendToWebSocket(wsInfo.ws, {
-        type: 'error',
-        message: `Failed to start Agent: ${error.message}`
-      });
-    }
-  }
-
-  async stopAgent(sessionId) {
-    const session = this.claudeSessions.get(sessionId);
-    if (!session || !session.active) return;
-    await this.agentBridge.stopSession(sessionId);
-    session.active = false;
-    session.agent = null;
-    session.lastActivity = new Date();
-    this.broadcastToSession(sessionId, { type: 'agent_stopped' });
   }
 
   // ─── SDK Chat Mode ───
@@ -1277,16 +891,10 @@ class ClaudeCodeWebServer {
       this.server.close();
     }
     
-    // Stop all sessions
+    // Stop all SDK sessions
     for (const [sessionId, session] of this.claudeSessions.entries()) {
-      if (session.active) {
-        if (session.agent === 'codex') {
-          this.codexBridge.stopSession(sessionId);
-        } else if (session.agent === 'agent') {
-          this.agentBridge.stopSession(sessionId);
-        } else {
-        this.claudeBridge.stopSession(sessionId);
-        }
+      if (session.active && session.agent === 'sdk') {
+        this.sdkSession.stopSession(sessionId);
       }
     }
     
@@ -1403,8 +1011,12 @@ class ClaudeCodeWebServer {
 }
 
 async function startServer(options) {
-  const server = new ClaudeCodeWebServer(options);
-  return await server.start();
+  const webServer = new ClaudeCodeWebServer(options);
+  const httpServer = await webServer.start();
+  // Expose saveSessionsToDisk for coordinated shutdown from cc-web.js
+  httpServer.saveAllSessions = () => webServer.saveSessionsToDisk();
+  httpServer.closeAll = () => webServer.close();
+  return httpServer;
 }
 
 module.exports = { startServer, ClaudeCodeWebServer };
