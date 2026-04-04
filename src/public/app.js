@@ -859,11 +859,19 @@ class ClaudeCodeWebInterface {
     }
 
     reconnect() {
+        const previousSessionId = this.currentClaudeSessionId;
         this.disconnect();
-        setTimeout(() => {
-            this.connect().catch(err => console.error('Reconnection failed:', err));
+        setTimeout(async () => {
+            try {
+                await this.connect();
+                // Re-join the previous session so input keeps working
+                if (previousSessionId) {
+                    await this.joinSession(previousSessionId);
+                }
+            } catch (err) {
+                console.error('Reconnection failed:', err);
+            }
         }, 1000);
-        // Reconnect button removed with header
     }
 
     send(data) {
