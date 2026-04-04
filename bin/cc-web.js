@@ -128,6 +128,10 @@ async function main() {
 
     const shutdown = async () => {
       console.log('\nShutting down server...');
+      // Save sessions before closing
+      if (typeof server.saveAllSessions === 'function') {
+        try { await server.saveAllSessions(); } catch (_) {}
+      }
       // Close ngrok tunnel first if active
       if (ngrokListener && typeof ngrokListener.close === 'function') {
         try { await ngrokListener.close(); } catch (_) {}

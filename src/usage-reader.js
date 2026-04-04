@@ -5,7 +5,7 @@ const { createReadStream } = require('fs');
 
 class UsageReader {
   constructor(sessionDurationHours = 5) {
-    this.claudeProjectsPath = path.join(process.env.HOME || '/', '.claude', 'projects');
+    this.claudeProjectsPath = path.join(process.env.HOME || require('os').homedir() || '/tmp', '.claude', 'projects');
     this.cache = null;
     this.cacheTime = null;
     this.cacheTimeout = 5000; // Cache for 5 seconds for more real-time updates
@@ -243,7 +243,7 @@ class UsageReader {
       // Read entries from each file
       for (const file of files) {
         const fileEntries = await this.readJsonlFile(file, cutoffTime);
-        entries.push(...fileEntries);
+        for (const e of fileEntries) entries.push(e);
       }
       
       // Sort by timestamp
@@ -266,7 +266,7 @@ class UsageReader {
       // Read entries from each recent file
       for (const file of files) {
         const fileEntries = await this.readJsonlFile(file, cutoffTime);
-        entries.push(...fileEntries);
+        for (const e of fileEntries) entries.push(e);
       }
       
       // Sort by timestamp
@@ -419,11 +419,10 @@ class UsageReader {
                 totalCost += (cacheCreationTokens * 0.00000025) + (cacheReadTokens * 0.000000025);
               }
               
-              // Use total_cost from usage if available, but check if it's in cents
+              // Use total_cost from usage if available
               let finalCost = totalCost;
               if (usage.total_cost !== undefined) {
-                // If total_cost is greater than 1, it's likely in cents
-                finalCost = usage.total_cost > 1 ? usage.total_cost / 100 : usage.total_cost;
+                finalCost = usage.total_cost;
               }
               
               const processedEntry = {
@@ -563,7 +562,7 @@ class UsageReader {
       }
 
       // Find the JSONL file for this session
-      const sessionFile = path.join(this.claudeProjectsPath, path.basename(process.cwd()).replace(/[^a-zA-Z0-9-]/g, '-'), `${sessionId}.jsonl`);
+      const sessionFile = path.join(this.claudeProjectsPath, process.cwd().replace(/\//g, '-'), `${sessionId}.jsonl`);
       
       // Check if the file exists
       try {
@@ -634,13 +633,6 @@ class UsageReader {
     }
   }
   
-  // Legacy method - keeping for compatibility
-  async getSessionUsage(sessionStartTime) {
-    // This method is kept for backward compatibility
-    // New implementation uses getSessionUsageById
-    return null;
-  }
-
   // Detect overlapping sessions within rolling windows
   async detectOverlappingSessions() {
     try {
@@ -830,7 +822,7 @@ class UsageReader {
       let processedEntries = new Set();
       
       for (const entry of todayEntries) {
-        const entryKey = `${entry.timestamp}_${entry.type || ''}_${entry.model || ''}`;
+        const entryKey = `${entry.timestamp}_${entry.type || ''}_${entry.model || ''}_${entry.inputTokens || 0}`;
         if (processedEntries.has(entryKey)) {
           continue;
         }
@@ -862,7 +854,7 @@ class UsageReader {
           for (const e of todayEntries) {
             const eTime = new Date(e.timestamp);
             if (eTime >= sessionStart && eTime <= actualSessionEnd) {
-              processedEntries.add(`${e.timestamp}_${e.type || ''}_${e.model || ''}`);
+              processedEntries.add(`${e.timestamp}_${e.type || ''}_${e.model || ''}_${e.inputTokens || 0}`);
             }
           }
         }

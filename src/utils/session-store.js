@@ -7,7 +7,6 @@ class SessionStore {
         // Store sessions in user's home directory
         this.storageDir = path.join(os.homedir(), '.claude-code-web');
         this.sessionsFile = path.join(this.storageDir, 'sessions.json');
-        this.initializeStorage();
     }
 
     async initializeStorage() {

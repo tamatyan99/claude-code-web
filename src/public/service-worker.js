@@ -1,11 +1,14 @@
-const CACHE_NAME = 'claude-code-web-v1';
+const CACHE_NAME = 'claude-code-web-v2';
 const urlsToCache = [
   '/',
   '/index.html',
   '/style.css',
   '/app.js',
   '/session-manager.js',
-  '/plan-detector.js'
+  '/plan-detector.js',
+  '/v2/index.html',
+  '/v2/chat.js',
+  '/v2/chat.css'
 ];
 
 // Install event - cache resources

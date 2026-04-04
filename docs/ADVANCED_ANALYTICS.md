@@ -50,7 +50,7 @@ The Claude Code Web Interface now includes sophisticated session tracking and to
 ### Environment Variables
 ```bash
 # Set your Claude plan type
-export CLAUDE_PLAN=claude-pro  # or claude-max5, claude-max20, custom
+export CLAUDE_PLAN=max20  # or pro, max5, claude-max20, custom
 
 # Set custom cost limit (for custom plans)
 export CLAUDE_COST_LIMIT=50.00
@@ -62,7 +62,7 @@ export CLAUDE_SESSION_HOURS=5
 ### Command Line Options
 ```bash
 # Start with specific plan
-npm start -- --plan claude-pro
+npm start -- --plan max20
 
 # Custom cost limit
 npm start -- --customCostLimit 75.00
@@ -115,7 +115,7 @@ The interface shows comprehensive usage information:
    - Session management
    - Plan configuration
 
-4. **Client Display** (`src/public/app.js`)
+4. **Client Display** (`src/public/v2/chat.js` — default; `src/public/app.js` — legacy terminal UI)
    - Dynamic UI updates
    - Progress bar rendering
    - Mobile-responsive design

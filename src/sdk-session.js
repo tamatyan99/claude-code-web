@@ -42,7 +42,7 @@ class SdkSession {
     const {
       workingDir = process.cwd(),
       model = null,
-      permissionMode = 'bypassPermissions',
+      permissionMode = 'default',
       resumeSessionId = null,
       continueSession = false,
       onMessage = () => {},
@@ -127,7 +127,8 @@ class SdkSession {
     }
     args.push('--permission-mode', permMode);
 
-    console.log(`[SDK] Starting: claude ${args.filter((_, i) => !(args[i - 1] === '-p')).join(' ')}`);
+    // Log args but omit the prompt value to avoid leaking it into logs
+    console.log(`[SDK] Starting: claude ${args.slice(0, 5).join(' ')}${args.length > 5 ? '...' : ''}`);
     console.log(`[SDK] Working dir: ${session.workingDir}`);
 
     const proc = spawn(this.command, args, {
@@ -166,7 +167,7 @@ class SdkSession {
           session.messageHistory.push(msg);
           // Keep history manageable
           if (session.messageHistory.length > 500) {
-            session.messageHistory = session.messageHistory.slice(-300);
+            session.messageHistory = session.messageHistory.slice(-400);
           }
 
           try { onMessage(msg); } catch (err) {
@@ -238,7 +239,7 @@ class SdkSession {
     }
 
     session.process.kill('SIGTERM');
-    // Force kill after 5s
+    // Force kill after 5s; stored on session so the close handler can cancel it
     session.killTimeout = setTimeout(() => {
       if (session.process) {
         try { session.process.kill('SIGKILL'); } catch (_) {}

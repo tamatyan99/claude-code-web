@@ -6,9 +6,6 @@ const path = require('path');
 const WebSocket = require('ws');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
-const ClaudeBridge = require('./claude-bridge');
-const CodexBridge = require('./codex-bridge');
-const AgentBridge = require('./agent-bridge');
 const SdkSession = require('./sdk-session');
 const SessionStore = require('./utils/session-store');
 const UsageReader = require('./usage-reader');
@@ -30,11 +27,8 @@ class ClaudeCodeWebServer {
     this.sessionDurationHours = parseFloat(process.env.CLAUDE_SESSION_HOURS || options.sessionHours || 5);
 
     this.app = express();
-    this.claudeSessions = new Map(); // Persistent sessions (claude, codex, or agent)
+    this.claudeSessions = new Map(); // Persistent sessions
     this.webSocketConnections = new Map(); // Maps WebSocket connection ID to session info
-    this.claudeBridge = new ClaudeBridge();
-    this.codexBridge = new CodexBridge();
-    this.agentBridge = new AgentBridge();
     this.sdkSession = new SdkSession();
     this.sessionStore = new SessionStore();
     this.usageReader = new UsageReader(this.sessionDurationHours);
@@ -45,13 +39,8 @@ class ClaudeCodeWebServer {
     });
     this.autoSaveInterval = null;
     this.startTime = Date.now(); // Track server start time
-    this.isShuttingDown = false; // Flag to prevent duplicate shutdown
-    // Commands dropdown removed
-    // Assistant aliases (for UI display only)
     this.aliases = {
-      claude: options.claudeAlias || process.env.CLAUDE_ALIAS || 'Claude',
-      codex: options.codexAlias || process.env.CODEX_ALIAS || 'Codex',
-      agent: options.agentAlias || process.env.AGENT_ALIAS || 'Cursor'
+      claude: options.claudeAlias || process.env.CLAUDE_ALIAS || 'Claude'
     };
 
     this.setupExpress();
@@ -61,10 +50,12 @@ class ClaudeCodeWebServer {
 
   async loadPersistedSessions() {
     try {
-      const sessions = await this.sessionStore.loadSessions();
-      this.claudeSessions = sessions;
-      if (sessions.size > 0) {
-        console.log(`Loaded ${sessions.size} persisted sessions`);
+      const loaded = await this.sessionStore.loadSessions();
+      if (loaded.size > 0) {
+        for (const [k, v] of loaded) {
+          this.claudeSessions.set(k, v);
+        }
+        console.log(`Loaded ${loaded.size} persisted sessions`);
       }
     } catch (error) {
       console.error('Failed to load persisted sessions:', error);
@@ -180,145 +171,6 @@ class ClaudeCodeWebServer {
         }
       });
     });
-  }
-
-  // ─── Bridge Lookup ───
-
-  getBridgeForAgent(agentType) {
-    switch (agentType) {
-      case 'codex': return this.codexBridge;
-      case 'agent': return this.agentBridge;
-      case 'claude': return this.claudeBridge;
-      default: return null;
-    }
-  }
-
-  // ─── Consolidated Agent Start/Stop ───
-
-  async startAgentSession(agentType, wsId, options) {
-    const wsInfo = this.webSocketConnections.get(wsId);
-    if (!wsInfo) return;
-    if (!wsInfo.claudeSessionId) {
-      this.sendToWebSocket(wsInfo.ws, {
-        type: 'error',
-        message: 'No session joined'
-      });
-      return;
-    }
-
-    const session = this.claudeSessions.get(wsInfo.claudeSessionId);
-    if (!session) return;
-
-    if (session.active) {
-      this.sendToWebSocket(wsInfo.ws, {
-        type: 'error',
-        message: 'An agent is already running in this session'
-      });
-      return;
-    }
-
-    const bridge = this.getBridgeForAgent(agentType);
-    if (!bridge) {
-      this.sendToWebSocket(wsInfo.ws, {
-        type: 'error',
-        message: `Unknown agent type: ${agentType}`
-      });
-      return;
-    }
-
-    // Capture the session ID to avoid closure issues
-    const sessionId = wsInfo.claudeSessionId;
-
-    session.active = true;
-    session.agent = agentType;
-
-    try {
-      const bridgeOptions = {
-        workingDir: session.workingDir,
-        cols: options.cols,
-        rows: options.rows,
-        onOutput: (data) => {
-          const currentSession = this.claudeSessions.get(sessionId);
-          if (!currentSession) return;
-          currentSession.outputBuffer.push(data);
-          if (currentSession.outputBuffer.length > currentSession.maxBufferSize) {
-            currentSession.outputBuffer.shift();
-          }
-          this.broadcastToSession(sessionId, { type: 'output', data });
-        },
-        onExit: (code, signal) => {
-          const currentSession = this.claudeSessions.get(sessionId);
-          if (currentSession) {
-            currentSession.active = false;
-            currentSession.agent = null;
-          }
-          this.broadcastToSession(sessionId, { type: 'exit', code, signal });
-        },
-        onError: (error) => {
-          const currentSession = this.claudeSessions.get(sessionId);
-          if (currentSession) {
-            currentSession.active = false;
-            currentSession.agent = null;
-          }
-          this.broadcastToSession(sessionId, { type: 'error', message: error.message });
-        }
-      };
-
-      // Only pass dangerouslySkipPermissions for agents that support it
-      if (agentType !== 'agent') {
-        bridgeOptions.dangerouslySkipPermissions = !!options.dangerouslySkipPermissions;
-      }
-
-      await bridge.startSession(sessionId, bridgeOptions);
-
-      session.lastActivity = new Date();
-      if (!session.sessionStartTime) {
-        session.sessionStartTime = new Date();
-      }
-
-      this.broadcastToSession(sessionId, {
-        type: `${agentType}_started`,
-        sessionId: sessionId
-      });
-
-    } catch (error) {
-      session.active = false;
-      session.agent = null;
-      if (this.dev) {
-        console.error(`Error starting ${agentType} in session ${wsInfo.claudeSessionId}:`, error);
-      }
-      this.sendToWebSocket(wsInfo.ws, {
-        type: 'error',
-        message: `Failed to start ${agentType}: ${error.message}`
-      });
-    }
-  }
-
-  async stopAgentSession(sessionId) {
-    const session = this.claudeSessions.get(sessionId);
-    if (!session || !session.active) return;
-
-    const agentType = session.agent;
-    this.stopAgentByType(sessionId, agentType);
-
-    session.active = false;
-    session.agent = null;
-    session.lastActivity = new Date();
-
-    this.broadcastToSession(sessionId, {
-      type: `${agentType}_stopped`
-    });
-  }
-
-  stopAgentByType(sessionId, agentType) {
-    if (agentType === 'sdk') {
-      this.sdkSession.stopSession(sessionId);
-    } else {
-      const bridge = this.getBridgeForAgent(agentType);
-      if (bridge) {
-        bridge.stopSession(sessionId);
-      }
-    }
   }
 
   // ─── Session Management ───
@@ -518,6 +370,35 @@ class ClaudeCodeWebServer {
     }
   }
 
+  // Stop a session regardless of agent type. Used by WebSocket 'stop' handler.
+  async stopAgentSession(sessionId) {
+    const session = this.claudeSessions.get(sessionId);
+    if (!session) return;
+    await this.stopSdkSession(sessionId);
+  }
+
+  // Stop a session by agent type string. Used by REST DELETE /api/sessions/:id.
+  async stopAgentByType(sessionId, agentType) {
+    await this.stopAgentSession(sessionId);
+  }
+
+  async stopSdkSession(sessionId) {
+    const session = this.claudeSessions.get(sessionId);
+    if (!session || !session.active) return;
+
+    if (session.agent === 'sdk') {
+      this.sdkSession.stopSession(sessionId);
+    }
+
+    session.active = false;
+    session.agent = null;
+    session.lastActivity = new Date();
+
+    this.broadcastToSession(sessionId, {
+      type: 'sdk_done'
+    });
+  }
+
   // ─── WebSocket Utilities ───
 
   sendToWebSocket(ws, data) {
@@ -578,10 +459,10 @@ class ClaudeCodeWebServer {
       this.server.close();
     }
 
-    // Stop all sessions
+    // Stop all SDK sessions
     for (const [sessionId, session] of this.claudeSessions.entries()) {
-      if (session.active) {
-        this.stopAgentByType(sessionId, session.agent);
+      if (session.active && session.agent === 'sdk') {
+        this.sdkSession.stopSession(sessionId);
       }
     }
 
@@ -698,8 +579,12 @@ class ClaudeCodeWebServer {
 }
 
 async function startServer(options) {
-  const server = new ClaudeCodeWebServer(options);
-  return await server.start();
+  const webServer = new ClaudeCodeWebServer(options);
+  const httpServer = await webServer.start();
+  // Expose saveSessionsToDisk for coordinated shutdown from cc-web.js
+  httpServer.saveAllSessions = () => webServer.saveSessionsToDisk();
+  httpServer.closeAll = () => webServer.close();
+  return httpServer;
 }
 
 module.exports = { startServer, ClaudeCodeWebServer };

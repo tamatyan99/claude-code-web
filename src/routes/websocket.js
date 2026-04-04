@@ -97,16 +97,6 @@ async function handleMessage(server, wsId, data) {
       await server.leaveClaudeSession(wsId);
       break;
 
-    case 'start_claude':
-      await server.startAgentSession('claude', wsId, data.options || {});
-      break;
-    case 'start_codex':
-      await server.startAgentSession('codex', wsId, data.options || {});
-      break;
-    case 'start_agent':
-      await server.startAgentSession('agent', wsId, data.options || {});
-      break;
-
     case 'start_sdk':
       await server.startSdkSession(wsId, data.options || {});
       break;
@@ -116,51 +106,10 @@ async function handleMessage(server, wsId, data) {
       break;
 
     case 'input':
-      if (wsInfo.claudeSessionId) {
-        const session = server.claudeSessions.get(wsInfo.claudeSessionId);
-        if (session && session.connections.has(wsId)) {
-          if (session.active && session.agent) {
-            try {
-              const bridge = server.getBridgeForAgent(session.agent);
-              if (bridge) {
-                await bridge.sendInput(wsInfo.claudeSessionId, data.data);
-              }
-            } catch (error) {
-              if (server.dev) {
-                console.error(`Failed to send input to session ${wsInfo.claudeSessionId}:`, error.message);
-              }
-              server.sendToWebSocket(wsInfo.ws, {
-                type: 'error',
-                message: 'Agent is not running in this session. Please start an agent first.'
-              });
-            }
-          } else {
-            server.sendToWebSocket(wsInfo.ws, {
-              type: 'info',
-              message: 'No agent is running. Choose an option to start.'
-            });
-          }
-        }
-      }
-      break;
-
     case 'resize':
-      if (wsInfo.claudeSessionId) {
-        const session = server.claudeSessions.get(wsInfo.claudeSessionId);
-        if (session && session.connections.has(wsId)) {
-          if (session.active && session.agent) {
-            try {
-              const bridge = server.getBridgeForAgent(session.agent);
-              if (bridge) {
-                await bridge.resize(wsInfo.claudeSessionId, data.cols, data.rows);
-              }
-            } catch (error) {
-              if (server.dev) {
-                console.log(`Resize ignored - agent not active in session ${wsInfo.claudeSessionId}`);
-              }
-            }
-          }
-        }
+      // Legacy PTY input/resize — no-op since PTY bridges have been removed
+      if (server.dev) {
+        console.log(`Ignoring legacy message type '${data.type}' (PTY bridges removed)`);
       }
       break;
 
