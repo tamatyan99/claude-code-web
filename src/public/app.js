@@ -16,6 +16,8 @@ class ClaudeCodeWebInterface {
         this.isCreatingNewSession = false;
         this.isMobile = this.detectMobile();
         this.currentMode = 'chat';
+        this.currentModel = 'sonnet'; // Default model
+        this.modelList = ['opus', 'sonnet', 'haiku'];
         this.planDetector = null;
         this.planModal = null;
         this.agentTracker = null;
@@ -218,21 +220,88 @@ class ClaudeCodeWebInterface {
                         <line x1="15" y1="9" x2="9" y2="15"/>
                     </svg>
                 </button>
+                <button id="modelSwitchFloating" class="model-switch-floating" data-model="${this.currentModel}" title="Switch model">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                    </svg>
+                    <span class="model-floating-label">${this.currentModel.charAt(0).toUpperCase() + this.currentModel.slice(1)}</span>
+                </button>
             `;
             document.body.appendChild(modeSwitcher);
-            
+
             // Add event listener for mode switcher
             document.getElementById('modeSwitcherBtn').addEventListener('click', () => {
                 this.switchMode();
             });
-            
+
             // Add event listener for escape button
             document.getElementById('escapeBtn').addEventListener('click', () => {
                 this.sendEscape();
             });
+
+            // Add event listener for floating model switch
+            document.getElementById('modelSwitchFloating').addEventListener('click', () => {
+                this.cycleModel();
+            });
         }
     }
     
+    setupModelSwitch() {
+        const btn = document.getElementById('modelSwitchBtn');
+        if (btn) {
+            btn.setAttribute('data-model', this.currentModel);
+            btn.addEventListener('click', () => this.cycleModel());
+        }
+    }
+
+    cycleModel() {
+        const currentIndex = this.modelList.indexOf(this.currentModel);
+        const nextIndex = (currentIndex + 1) % this.modelList.length;
+        this.currentModel = this.modelList[nextIndex];
+
+        this.updateModelButtons();
+
+        // Send /model command to Claude CLI
+        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+            const modelMap = {
+                'opus': 'claude-opus-4-6',
+                'sonnet': 'claude-sonnet-4-6',
+                'haiku': 'claude-haiku-4-5-20251001'
+            };
+            const modelId = modelMap[this.currentModel] || this.currentModel;
+            this.send({ type: 'input', data: `/model ${modelId}\n` });
+        }
+    }
+
+    updateModelButtons() {
+        const displayName = this.currentModel.charAt(0).toUpperCase() + this.currentModel.slice(1);
+
+        // Update tab bar button
+        const btn = document.getElementById('modelSwitchBtn');
+        if (btn) {
+            btn.setAttribute('data-model', this.currentModel);
+            btn.title = `Switch model - Current: ${displayName}`;
+            btn.classList.add('switching');
+            setTimeout(() => btn.classList.remove('switching'), 250);
+        }
+        const label = document.getElementById('modelSwitchLabel');
+        if (label) {
+            label.textContent = displayName;
+        }
+
+        // Update floating button (mobile)
+        const floatingBtn = document.getElementById('modelSwitchFloating');
+        if (floatingBtn) {
+            floatingBtn.setAttribute('data-model', this.currentModel);
+            floatingBtn.classList.add('switching');
+            setTimeout(() => floatingBtn.classList.remove('switching'), 250);
+            const floatingLabel = floatingBtn.querySelector('.model-floating-label');
+            if (floatingLabel) {
+                floatingLabel.textContent = displayName;
+            }
+        }
+    }
+
     sendEscape() {
         // Send ESC key to terminal
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
@@ -463,6 +532,7 @@ class ClaudeCodeWebInterface {
         this.setupNewSessionModal();
         this.setupMobileSessionsModal();
         this.setupSessionBrowser();
+        this.setupModelSwitch();
 
         // Custom prompts dropdown removed
     }

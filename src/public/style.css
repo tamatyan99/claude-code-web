@@ -2300,6 +2300,113 @@ pre, code {
     }
 }
 
+/* Model Switch Button */
+.model-switch-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    transition: color 0.15s, background-color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+
+.model-switch-btn:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-tertiary);
+    border-color: var(--border-hover);
+}
+
+.model-switch-btn.switching {
+    animation: modelSwitchFlash 0.25s ease;
+}
+
+@keyframes modelSwitchFlash {
+    0% { transform: scale(1); }
+    50% { transform: scale(0.94); opacity: 0.7; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.model-switch-icon {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+}
+
+.model-switch-label {
+    line-height: 1;
+}
+
+.model-switch-btn[data-model="opus"] {
+    border-color: var(--warning);
+    color: var(--warning);
+}
+
+.model-switch-btn[data-model="sonnet"] {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.model-switch-btn[data-model="haiku"] {
+    border-color: var(--success);
+    color: var(--success);
+}
+
+/* Mobile model switch (floating) */
+.model-switch-floating {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 14px;
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 2px solid var(--border);
+    border-radius: 28px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s ease;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.model-switch-floating:hover {
+    background-color: var(--bg-tertiary);
+    border-color: var(--accent);
+}
+
+.model-switch-floating:active {
+    transform: translateY(0);
+}
+
+.model-switch-floating.switching {
+    animation: modelSwitchFlash 0.25s ease;
+}
+
+.model-switch-floating[data-model="opus"] {
+    border-color: var(--warning);
+    color: var(--warning);
+}
+
+.model-switch-floating[data-model="sonnet"] {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.model-switch-floating[data-model="haiku"] {
+    border-color: var(--success);
+    color: var(--success);
+}
+
 /* Session Browser */
 .tab-sessions-browse {
     background: none;
