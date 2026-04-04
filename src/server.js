@@ -9,6 +9,7 @@ const { v4: uuidv4 } = require('uuid');
 const ClaudeBridge = require('./claude-bridge');
 const CodexBridge = require('./codex-bridge');
 const AgentBridge = require('./agent-bridge');
+const SdkSession = require('./sdk-session');
 const SessionStore = require('./utils/session-store');
 const UsageReader = require('./usage-reader');
 const UsageAnalytics = require('./usage-analytics');
@@ -32,6 +33,7 @@ class ClaudeCodeWebServer {
     this.claudeBridge = new ClaudeBridge();
     this.codexBridge = new CodexBridge();
     this.agentBridge = new AgentBridge();
+    this.sdkSession = new SdkSession();
     this.sessionStore = new SessionStore();
     this.usageReader = new UsageReader(this.sessionDurationHours);
     this.usageAnalytics = new UsageAnalytics({
@@ -139,6 +141,12 @@ class ClaudeCodeWebServer {
     });
     
     this.app.use(express.static(path.join(__dirname, 'public')));
+
+    // v2 Chat UI route
+    this.app.get('/v2', (req, res) => {
+      res.sendFile(path.join(__dirname, 'public', 'v2', 'index.html'));
+    });
+    this.app.use('/v2', express.static(path.join(__dirname, 'public', 'v2')));
 
     // PWA Icon routes - generate icons dynamically
     const iconSizes = [16, 32, 144, 180, 192, 512];
@@ -630,7 +638,15 @@ class ClaudeCodeWebServer {
       case 'start_agent':
         await this.startAgent(wsId, data.options || {});
         break;
-      
+
+      case 'start_sdk':
+        await this.startSdkSession(wsId, data.options || {});
+        break;
+
+      case 'sdk_prompt':
+        await this.sendSdkPrompt(wsId, data.prompt, data.options || {});
+        break;
+
       case 'input':
         if (wsInfo.claudeSessionId) {
           // Verify the session exists and the WebSocket is part of it
@@ -1112,6 +1128,88 @@ class ClaudeCodeWebServer {
     session.agent = null;
     session.lastActivity = new Date();
     this.broadcastToSession(sessionId, { type: 'agent_stopped' });
+  }
+
+  // ─── SDK Chat Mode ───
+
+  async startSdkSession(wsId, options) {
+    const wsInfo = this.webSocketConnections.get(wsId);
+    if (!wsInfo || !wsInfo.claudeSessionId) return;
+
+    const sessionId = wsInfo.claudeSessionId;
+    const session = this.claudeSessions.get(sessionId);
+    if (!session) return;
+
+    try {
+      await this.sdkSession.startSession(sessionId, {
+        workingDir: session.workingDir,
+        model: options.model || null,
+        permissionMode: options.dangerouslySkipPermissions ? 'bypassPermissions' : 'default',
+        resumeSessionId: options.resumeSessionId || null,
+      });
+
+      session.active = true;
+      session.agent = 'sdk';
+      session.lastActivity = new Date();
+
+      this.broadcastToSession(sessionId, {
+        type: 'sdk_started',
+        sessionId,
+      });
+    } catch (error) {
+      this.sendToWebSocket(wsInfo.ws, {
+        type: 'error',
+        message: `Failed to start SDK session: ${error.message}`
+      });
+    }
+  }
+
+  async sendSdkPrompt(wsId, prompt, options) {
+    const wsInfo = this.webSocketConnections.get(wsId);
+    if (!wsInfo || !wsInfo.claudeSessionId) return;
+
+    const sessionId = wsInfo.claudeSessionId;
+    const session = this.claudeSessions.get(sessionId);
+    if (!session) return;
+
+    try {
+      await this.sdkSession.sendPrompt(sessionId, prompt, {
+        model: options.model || null,
+        permissionMode: options.dangerouslySkipPermissions ? 'bypassPermissions' : 'default',
+        onMessage: (msg) => {
+          session.lastActivity = new Date();
+          this.broadcastToSession(sessionId, {
+            type: 'sdk_message',
+            message: msg,
+          });
+        },
+        onEnd: (code, signal) => {
+          // Don't mark session inactive - it's still available for next prompt
+          this.broadcastToSession(sessionId, {
+            type: 'sdk_done',
+            code,
+            signal,
+          });
+        },
+        onError: (err) => {
+          this.broadcastToSession(sessionId, {
+            type: 'sdk_error',
+            message: err.message,
+          });
+        },
+      });
+
+      // Notify that processing has started
+      this.broadcastToSession(sessionId, {
+        type: 'sdk_processing',
+        sessionId,
+      });
+    } catch (error) {
+      this.sendToWebSocket(wsInfo.ws, {
+        type: 'error',
+        message: `Failed to send prompt: ${error.message}`
+      });
+    }
   }
 
   sendToWebSocket(ws, data) {
