@@ -250,6 +250,9 @@ class ClaudeCodeWebInterface {
             { key: 'left', label: '\u25C0' },
             { key: 'right', label: '\u25B6' },
             { sep: true },
+            { key: 'copy', label: 'Copy', cls: 'mkey-action' },
+            { key: 'paste', label: 'Paste', cls: 'mkey-action' },
+            { sep: true },
             { key: 'slash', label: '/' },
             { key: 'pipe', label: '|' },
             { key: 'tilde', label: '~' },
@@ -304,7 +307,16 @@ class ClaudeCodeWebInterface {
             'tilde': '~'
         };
 
-        toolbar.addEventListener('click', (e) => {
+        const flashBtn = (btn) => {
+            btn.style.backgroundColor = 'var(--accent)';
+            btn.style.color = '#fff';
+            setTimeout(() => {
+                btn.style.backgroundColor = '';
+                btn.style.color = '';
+            }, 120);
+        };
+
+        toolbar.addEventListener('click', async (e) => {
             const btn = e.target.closest('.mkey');
             if (!btn) return;
 
@@ -314,6 +326,57 @@ class ClaudeCodeWebInterface {
             if (key === 'ctrl') {
                 this._ctrlActive = !this._ctrlActive;
                 btn.classList.toggle('mkey-active', this._ctrlActive);
+                return;
+            }
+
+            // Copy: get selected text from terminal, or last visible lines
+            if (key === 'copy') {
+                let text = '';
+                if (this.terminal.hasSelection()) {
+                    text = this.terminal.getSelection();
+                } else {
+                    // Copy all visible terminal content
+                    const buf = this.terminal.buffer.active;
+                    const lines = [];
+                    for (let i = buf.baseY; i <= buf.baseY + buf.cursorY; i++) {
+                        const line = buf.getLine(i);
+                        if (line) lines.push(line.translateToString(true));
+                    }
+                    text = lines.join('\n').trimEnd();
+                }
+                if (text) {
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        btn.textContent = 'OK!';
+                        setTimeout(() => { btn.textContent = 'Copy'; }, 800);
+                    } catch (err) {
+                        // Fallback for browsers that block clipboard API
+                        const ta = document.createElement('textarea');
+                        ta.value = text;
+                        ta.style.cssText = 'position:fixed;left:-9999px;';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        ta.remove();
+                        btn.textContent = 'OK!';
+                        setTimeout(() => { btn.textContent = 'Copy'; }, 800);
+                    }
+                }
+                flashBtn(btn);
+                return;
+            }
+
+            // Paste: read from clipboard and send to terminal
+            if (key === 'paste') {
+                try {
+                    const text = await navigator.clipboard.readText();
+                    if (text && this.socket && this.socket.readyState === WebSocket.OPEN) {
+                        this.send({ type: 'input', data: text });
+                    }
+                } catch (err) {
+                    console.log('Clipboard read failed, user may need to allow permission');
+                }
+                flashBtn(btn);
                 return;
             }
 
@@ -333,14 +396,7 @@ class ClaudeCodeWebInterface {
             }
 
             this.send({ type: 'input', data });
-
-            // Visual feedback
-            btn.style.backgroundColor = 'var(--accent)';
-            btn.style.color = '#fff';
-            setTimeout(() => {
-                btn.style.backgroundColor = '';
-                btn.style.color = '';
-            }, 120);
+            flashBtn(btn);
         });
     }
 

@@ -1936,6 +1936,13 @@ pre, code {
     position: relative;
 }
 
+.mkey.mkey-action {
+    background-color: var(--bg-secondary);
+    border-color: var(--accent);
+    color: var(--accent);
+    font-size: 11px;
+}
+
 .mkey-separator {
     width: 1px;
     height: 20px;
