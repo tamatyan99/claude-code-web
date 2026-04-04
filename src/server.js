@@ -140,13 +140,20 @@ class ClaudeCodeWebServer {
       res.sendFile(path.join(__dirname, 'public', 'manifest.json'));
     });
     
-    this.app.use(express.static(path.join(__dirname, 'public')));
-
-    // v2 Chat UI route
-    this.app.get('/v2', (req, res) => {
+    // Default: v2 Chat UI at /
+    this.app.get('/', (req, res) => {
       res.sendFile(path.join(__dirname, 'public', 'v2', 'index.html'));
     });
     this.app.use('/v2', express.static(path.join(__dirname, 'public', 'v2')));
+
+    // Legacy terminal UI at /v1
+    this.app.get('/v1', (req, res) => {
+      res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    });
+    this.app.use('/v1', express.static(path.join(__dirname, 'public')));
+
+    // Static assets from public/ (icons, manifest, service-worker, etc.)
+    this.app.use(express.static(path.join(__dirname, 'public')));
 
     // PWA Icon routes - generate icons dynamically
     const iconSizes = [16, 32, 144, 180, 192, 512];
