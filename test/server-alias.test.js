@@ -15,10 +15,24 @@ describe('Server Aliases', function() {
   });
 
   it('should default aliases when not provided', function() {
+    // Temporarily clear any environment overrides so true defaults are tested
+    const savedClaude = process.env.CLAUDE_ALIAS;
+    const savedCodex = process.env.CODEX_ALIAS;
+    const savedAgent = process.env.AGENT_ALIAS;
+    delete process.env.CLAUDE_ALIAS;
+    delete process.env.CODEX_ALIAS;
+    delete process.env.AGENT_ALIAS;
+
     const server = new ClaudeCodeWebServer({ noAuth: true });
-    assert.ok(server.aliases.claude && server.aliases.claude.length > 0);
-    assert.ok(server.aliases.codex && server.aliases.codex.length > 0);
-    assert.ok(server.aliases.agent && server.aliases.agent.length > 0);
+
+    assert.strictEqual(server.aliases.claude, 'Claude');
+    assert.strictEqual(server.aliases.codex, 'Codex');
+    assert.strictEqual(server.aliases.agent, 'Cursor');
+
+    // Restore environment variables
+    if (savedClaude !== undefined) process.env.CLAUDE_ALIAS = savedClaude;
+    if (savedCodex !== undefined) process.env.CODEX_ALIAS = savedCodex;
+    if (savedAgent !== undefined) process.env.AGENT_ALIAS = savedAgent;
   });
 });
 

@@ -98,8 +98,10 @@ class SdkSession {
       '--verbose',
     ];
 
-    // Validate model name
-    if (model && !/^[a-zA-Z0-9._:-]+$/.test(model)) {
+    // Validate model name — must not start with a dash (flag injection) and must
+    // contain only safe characters (letters, digits, dots, underscores, colons,
+    // and interior hyphens).
+    if (model && (model.startsWith('-') || !/^[a-zA-Z0-9._:-]+$/.test(model))) {
       session.processing = false;
       throw new Error(`Invalid model name: ${model}`);
     }
