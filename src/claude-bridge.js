@@ -16,6 +16,15 @@ class ClaudeBridge extends BaseBridge {
     this._trustPromptHandled = new Set();
   }
 
+  async startSession(sessionId, options = {}) {
+    const originalOnExit = options.onExit || (() => {});
+    options.onExit = (exitCode, signal) => {
+      this._trustPromptHandled.delete(sessionId);
+      originalOnExit(exitCode, signal);
+    };
+    return super.startSession(sessionId, options);
+  }
+
   handleData(sessionId, proc, dataBuffer, data) {
     if (!this._trustPromptHandled.has(sessionId) && dataBuffer.includes('Do you trust the files in this folder?')) {
       this._trustPromptHandled.add(sessionId);

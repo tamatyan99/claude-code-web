@@ -71,13 +71,11 @@ class ClaudeCodeWebServer {
   
   setupAutoSave() {
     // Auto-save sessions every 30 seconds
-    this.autoSaveInterval = setInterval(() => {
-      this.saveSessionsToDisk();
+    this.autoSaveInterval = setInterval(async () => {
+      await this.saveSessionsToDisk();
     }, 30000);
     
     // Also save on process exit
-    process.on('SIGINT', () => this.handleShutdown());
-    process.on('SIGTERM', () => this.handleShutdown());
     process.on('beforeExit', () => this.saveSessionsToDisk());
   }
   
@@ -105,9 +103,19 @@ class ClaudeCodeWebServer {
 
   isPathWithinBase(targetPath) {
     try {
-      const resolvedTarget = path.resolve(targetPath);
-      const resolvedBase = path.resolve(this.baseFolder);
-      return resolvedTarget.startsWith(resolvedBase);
+      let resolvedTarget;
+      try {
+        resolvedTarget = fs.realpathSync(targetPath);
+      } catch (e) {
+        resolvedTarget = path.resolve(targetPath);
+      }
+      let resolvedBase;
+      try {
+        resolvedBase = fs.realpathSync(this.baseFolder);
+      } catch (e) {
+        resolvedBase = path.resolve(this.baseFolder);
+      }
+      return resolvedTarget === resolvedBase || resolvedTarget.startsWith(resolvedBase + path.sep);
     } catch (error) {
       return false;
     }
@@ -290,9 +298,17 @@ class ClaudeCodeWebServer {
         return res.status(404).json({ error: 'Session not found' });
       }
       
-      // Stop Claude process if running
+      // Stop running process if active
       if (session.active) {
-        this.claudeBridge.stopSession(sessionId);
+        if (session.agent === 'codex') {
+          this.codexBridge.stopSession(sessionId);
+        } else if (session.agent === 'agent') {
+          this.agentBridge.stopSession(sessionId);
+        } else if (session.agent === 'sdk') {
+          this.sdkSession.stopSession(sessionId);
+        } else {
+          this.claudeBridge.stopSession(sessionId);
+        }
       }
       
       // Disconnect all WebSocket connections for this session
@@ -510,9 +526,6 @@ class ClaudeCodeWebServer {
       }
     });
 
-    this.app.get('/', (req, res) => {
-      res.sendFile(path.join(__dirname, 'public', 'index.html'));
-    });
   }
 
   async start() {
@@ -856,7 +869,8 @@ class ClaudeCodeWebServer {
 
   async startClaude(wsId, options) {
     const wsInfo = this.webSocketConnections.get(wsId);
-    if (!wsInfo || !wsInfo.claudeSessionId) {
+    if (!wsInfo) return;
+    if (!wsInfo.claudeSessionId) {
       this.sendToWebSocket(wsInfo.ws, {
         type: 'error',
         message: 'No session joined'
@@ -877,7 +891,10 @@ class ClaudeCodeWebServer {
 
     // Capture the session ID to avoid closure issues
     const sessionId = wsInfo.claudeSessionId;
-    
+
+    session.active = true;
+    session.agent = 'claude';
+
     try {
       await this.claudeBridge.startSession(sessionId, {
         workingDir: session.workingDir,
@@ -924,8 +941,6 @@ class ClaudeCodeWebServer {
         }
       });
 
-      session.active = true;
-      session.agent = 'claude';
       session.lastActivity = new Date();
       // Set session start time if this is the first time Claude is started in this session
       if (!session.sessionStartTime) {
@@ -938,6 +953,8 @@ class ClaudeCodeWebServer {
       });
 
     } catch (error) {
+      session.active = false;
+      session.agent = null;
       if (this.dev) {
         console.error(`Error starting Claude in session ${wsInfo.claudeSessionId}:`, error);
       }
@@ -964,7 +981,8 @@ class ClaudeCodeWebServer {
 
   async startCodex(wsId, options) {
     const wsInfo = this.webSocketConnections.get(wsId);
-    if (!wsInfo || !wsInfo.claudeSessionId) {
+    if (!wsInfo) return;
+    if (!wsInfo.claudeSessionId) {
       this.sendToWebSocket(wsInfo.ws, {
         type: 'error',
         message: 'No session joined'
@@ -984,6 +1002,10 @@ class ClaudeCodeWebServer {
     }
 
     const sessionId = wsInfo.claudeSessionId;
+
+    session.active = true;
+    session.agent = 'codex';
+
     try {
       await this.codexBridge.startSession(sessionId, {
         workingDir: session.workingDir,
@@ -1017,8 +1039,6 @@ class ClaudeCodeWebServer {
         }
       });
 
-      session.active = true;
-      session.agent = 'codex';
       session.lastActivity = new Date();
       if (!session.sessionStartTime) {
         session.sessionStartTime = new Date();
@@ -1030,6 +1050,8 @@ class ClaudeCodeWebServer {
       });
 
     } catch (error) {
+      session.active = false;
+      session.agent = null;
       if (this.dev) {
         console.error(`Error starting Codex in session ${wsInfo.claudeSessionId}:`, error);
       }
@@ -1052,7 +1074,8 @@ class ClaudeCodeWebServer {
 
   async startAgent(wsId, options) {
     const wsInfo = this.webSocketConnections.get(wsId);
-    if (!wsInfo || !wsInfo.claudeSessionId) {
+    if (!wsInfo) return;
+    if (!wsInfo.claudeSessionId) {
       this.sendToWebSocket(wsInfo.ws, {
         type: 'error',
         message: 'No session joined'
@@ -1072,6 +1095,10 @@ class ClaudeCodeWebServer {
     }
 
     const sessionId = wsInfo.claudeSessionId;
+
+    session.active = true;
+    session.agent = 'agent';
+
     try {
       await this.agentBridge.startSession(sessionId, {
         workingDir: session.workingDir,
@@ -1104,8 +1131,6 @@ class ClaudeCodeWebServer {
         }
       });
 
-      session.active = true;
-      session.agent = 'agent';
       session.lastActivity = new Date();
       if (!session.sessionStartTime) {
         session.sessionStartTime = new Date();
@@ -1117,6 +1142,8 @@ class ClaudeCodeWebServer {
       });
 
     } catch (error) {
+      session.active = false;
+      session.agent = null;
       if (this.dev) {
         console.error(`Error starting Agent in session ${wsInfo.claudeSessionId}:`, error);
       }
@@ -1180,6 +1207,12 @@ class ClaudeCodeWebServer {
     if (!session) return;
 
     try {
+      // Notify that processing has started
+      this.broadcastToSession(sessionId, {
+        type: 'sdk_processing',
+        sessionId,
+      });
+
       await this.sdkSession.sendPrompt(sessionId, prompt, {
         model: options.model || null,
         permissionMode: options.dangerouslySkipPermissions ? 'bypassPermissions' : 'default',
@@ -1204,12 +1237,6 @@ class ClaudeCodeWebServer {
             message: err.message,
           });
         },
-      });
-
-      // Notify that processing has started
-      this.broadcastToSession(sessionId, {
-        type: 'sdk_processing',
-        sessionId,
       });
     } catch (error) {
       this.sendToWebSocket(wsInfo.ws, {

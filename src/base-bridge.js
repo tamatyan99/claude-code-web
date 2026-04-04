@@ -208,7 +208,6 @@ class BaseBridge {
     }
 
     session.active = false;
-    this.sessions.delete(sessionId);
   }
 
   getSession(sessionId) {

@@ -6,6 +6,8 @@ class ChatUI {
         this.isProcessing = false;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
+        this.reconnectTimer = null;
+        this.lastResultRendered = false;
 
         this.messagesEl = document.getElementById('chatMessages');
         this.inputEl = document.getElementById('chatInput');
@@ -56,13 +58,21 @@ class ChatUI {
         };
 
         this.socket.onmessage = (event) => {
-            this.handleMessage(JSON.parse(event.data));
+            let data;
+            try {
+                data = JSON.parse(event.data);
+            } catch (err) {
+                console.error('Failed to parse WebSocket message:', err);
+                return;
+            }
+            this.handleMessage(data);
         };
 
         this.socket.onclose = () => {
             this.setStatus('disconnected', 'Disconnected');
+            clearTimeout(this.reconnectTimer);
             if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                setTimeout(() => {
+                this.reconnectTimer = setTimeout(() => {
                     this.reconnectAttempts++;
                     this.connect();
                 }, 1000 * Math.pow(2, this.reconnectAttempts));
@@ -91,13 +101,16 @@ class ChatUI {
                 this.send({ type: 'join_session', sessionId: this.sessionId });
                 break;
 
-            case 'session_joined':
+            case 'session_joined': {
                 // Start SDK mode
+                const urlParams = new URLSearchParams(window.location.search);
+                const skipPermissions = urlParams.get('permissions') !== 'prompt';
                 this.send({
                     type: 'start_sdk',
-                    options: { dangerouslySkipPermissions: true }
+                    options: { dangerouslySkipPermissions: skipPermissions }
                 });
                 break;
+            }
 
             case 'sdk_started':
                 this.setStatus('connected', 'Ready');
@@ -166,7 +179,7 @@ class ChatUI {
                 }
 
                 for (const tool of toolUses) {
-                    this.appendToolCard(tool.name, tool.input);
+                    this.appendToolCard(tool.name, tool.input, tool.id);
                 }
                 break;
             }
@@ -190,10 +203,11 @@ class ChatUI {
                     this.totalCost += msg.cost_usd;
                     this.costDisplay.textContent = `$${this.totalCost.toFixed(4)}`;
                 }
-                if (msg.result) {
+                if (msg.result && !this.lastResultRendered) {
+                    this.lastResultRendered = true;
                     // If there's a final text result not yet shown
                     const lastMsg = this.messagesEl.querySelector('.msg-assistant:last-of-type .msg-content');
-                    if (!lastMsg || !lastMsg.textContent.includes(msg.result.substring(0, 50))) {
+                    if (!lastMsg || lastMsg.textContent.trim() !== msg.result.trim()) {
                         this.appendAssistantMessage(msg.result);
                     }
                 }
@@ -220,6 +234,7 @@ class ChatUI {
     sendMessage() {
         const text = this.inputEl.value.trim();
         if (!text || this.isProcessing) return;
+        this.lastResultRendered = false;
 
         // Hide welcome
         if (this.welcomeEl) {
@@ -261,9 +276,6 @@ class ChatUI {
     }
 
     appendAssistantMessage(text) {
-        // Check if we can append to the last assistant message
-        const last = this.messagesEl.querySelector('.msg-assistant:last-child .msg-content');
-
         const el = document.createElement('div');
         el.className = 'msg msg-assistant';
         const role = document.createElement('div');
@@ -278,9 +290,12 @@ class ChatUI {
         this.scrollToBottom();
     }
 
-    appendToolCard(toolName, input) {
+    appendToolCard(toolName, input, toolId) {
         const card = document.createElement('div');
         card.className = 'tool-card';
+        if (toolId) {
+            card.dataset.toolId = toolId;
+        }
 
         const header = document.createElement('div');
         header.className = 'tool-card-header';
@@ -308,11 +323,12 @@ class ChatUI {
             text = JSON.stringify(content, null, 2);
         }
 
-        // Find the last tool card and add result
-        const cards = this.messagesEl.querySelectorAll('.tool-card');
-        if (cards.length > 0) {
-            const lastCard = cards[cards.length - 1];
-            const body = lastCard.querySelector('.tool-card-body');
+        // Find the matching tool card by ID, or fall back to last card
+        const escapedId = CSS.escape(toolUseId);
+        const card = this.messagesEl.querySelector(`.tool-card[data-tool-id="${escapedId}"]`)
+            || this.messagesEl.querySelector('.tool-card:last-child');
+        if (card) {
+            const body = card.querySelector('.tool-card-body');
             if (body) {
                 body.textContent += '\n--- Result ---\n' + text;
             }
@@ -391,10 +407,10 @@ class ChatUI {
         html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
 
         // Bold: **...**
-        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/\*\*([^\n]+?)\*\*/g, '<strong>$1</strong>');
 
         // Italic: *...*
-        html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+        html = html.replace(/(?<!\*)\*(?!\*)([^\n]+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
 
         // Line breaks
         html = html.replace(/\n/g, '<br>');

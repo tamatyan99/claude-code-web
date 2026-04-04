@@ -7,7 +7,6 @@ class SessionTabManager {
         this.tabOrder = []; // visual order of tabs
         this.tabHistory = []; // most recently used order
         this.notificationsEnabled = false;
-        this.requestNotificationPermission();
     }
 
     getAlias(kind) {
@@ -304,12 +303,12 @@ class SessionTabManager {
             `;
             document.body.appendChild(promptDiv);
             
-            document.getElementById('enableNotifications').onclick = () => {
+            promptDiv.querySelector('#enableNotifications').onclick = () => {
                 this.requestNotificationPermission();
                 promptDiv.remove();
             };
-            
-            document.getElementById('dismissNotifications').onclick = () => {
+
+            promptDiv.querySelector('#dismissNotifications').onclick = () => {
                 promptDiv.remove();
             };
             
@@ -468,15 +467,20 @@ class SessionTabManager {
                 item.classList.add('active');
             }
             
-            item.innerHTML = `
-                <span class="overflow-tab-name">${tabElement.querySelector('.tab-name').textContent}</span>
-                <span class="overflow-tab-close" data-session-id="${sessionId}" title="Close tab">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'overflow-tab-name';
+            nameSpan.textContent = tabElement.querySelector('.tab-name').textContent;
+            item.appendChild(nameSpan);
+
+            const closeSpan = document.createElement('span');
+            closeSpan.className = 'overflow-tab-close';
+            closeSpan.dataset.sessionId = sessionId;
+            closeSpan.title = 'Close tab';
+            closeSpan.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="18" y1="6" x2="6" y2="18"/>
                         <line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                </span>
-            `;
+                    </svg>`;
+            item.appendChild(closeSpan);
             
             // Click to switch to tab
             item.addEventListener('click', async (e) => {
@@ -754,6 +758,13 @@ class SessionTabManager {
 
         const orderedIds = this.getOrderedTabIds();
         const closedIndex = orderedIds.indexOf(sessionId);
+
+        // Clear any pending timeouts before removing session data
+        const session = this.activeSessions.get(sessionId);
+        if (session) {
+            clearTimeout(session.workCompleteTimeout);
+            clearTimeout(session.idleTimeout);
+        }
 
         // Remove tab
         tab.remove();

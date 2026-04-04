@@ -160,8 +160,17 @@ class SessionStore {
             await fs.access(this.sessionsFile);
             const stats = await fs.stat(this.sessionsFile);
             const data = await fs.readFile(this.sessionsFile, 'utf8');
-            const parsed = JSON.parse(data);
-            
+
+            let parsed;
+            try {
+                parsed = JSON.parse(data);
+            } catch (parseError) {
+                return {
+                    exists: false,
+                    error: 'Corrupted sessions file'
+                };
+            }
+
             return {
                 exists: true,
                 savedAt: parsed.savedAt,

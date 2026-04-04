@@ -5,7 +5,7 @@ const { createReadStream } = require('fs');
 
 class UsageReader {
   constructor(sessionDurationHours = 5) {
-    this.claudeProjectsPath = path.join(process.env.HOME, '.claude', 'projects');
+    this.claudeProjectsPath = path.join(process.env.HOME || '/', '.claude', 'projects');
     this.cache = null;
     this.cacheTime = null;
     this.cacheTimeout = 5000; // Cache for 5 seconds for more real-time updates
@@ -329,8 +329,9 @@ class UsageReader {
     const files = [];
     
     try {
-      const projectDirs = await fs.readdir(this.claudeProjectsPath);
-      
+      let projectDirs = await fs.readdir(this.claudeProjectsPath);
+      projectDirs = projectDirs.filter(name => !name.includes('..') && !name.includes(path.sep));
+
       for (const projectDir of projectDirs) {
         const projectPath = path.join(this.claudeProjectsPath, projectDir);
         const stat = await fs.stat(projectPath);
@@ -556,7 +557,11 @@ class UsageReader {
       if (!sessionId) {
         return null;
       }
-      
+
+      if (!/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
+        return null;
+      }
+
       // Find the JSONL file for this session
       const sessionFile = path.join(this.claudeProjectsPath, path.basename(process.cwd()).replace(/[^a-zA-Z0-9-]/g, '-'), `${sessionId}.jsonl`);
       
@@ -825,7 +830,8 @@ class UsageReader {
       let processedEntries = new Set();
       
       for (const entry of todayEntries) {
-        if (processedEntries.has(entry.timestamp)) {
+        const entryKey = `${entry.timestamp}_${entry.type || ''}_${entry.model || ''}`;
+        if (processedEntries.has(entryKey)) {
           continue;
         }
         
@@ -856,7 +862,7 @@ class UsageReader {
           for (const e of todayEntries) {
             const eTime = new Date(e.timestamp);
             if (eTime >= sessionStart && eTime <= actualSessionEnd) {
-              processedEntries.add(e.timestamp);
+              processedEntries.add(`${e.timestamp}_${e.type || ''}_${e.model || ''}`);
             }
           }
         }

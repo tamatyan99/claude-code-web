@@ -246,7 +246,12 @@ class UsageAnalytics extends EventEmitter {
     
     const oldAvg = oldRates.reduce((sum, e) => sum + e.rate, 0) / oldRates.length;
     const newAvg = newRates.reduce((sum, e) => sum + e.rate, 0) / newRates.length;
-    
+
+    if (oldAvg === 0) {
+      this.velocityTrend = newAvg > 0 ? 'increasing' : 'stable';
+      return;
+    }
+
     const change = (newAvg - oldAvg) / oldAvg;
     
     if (change > 0.15) {

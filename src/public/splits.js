@@ -96,6 +96,8 @@ class Split {
         
         this.socket.onopen = () => {
             console.log(`[Split ${this.index}] Connected to session ${sessionId}`);
+            // Join the session first
+            this.socket.send(JSON.stringify({ type: 'join_session', sessionId: this.sessionId }));
             // Send initial resize
             const { cols, rows } = this.terminal;
             this.socket.send(JSON.stringify({ type: 'resize', cols, rows }));
@@ -283,24 +285,27 @@ class SplitContainer {
             e.preventDefault();
         });
 
-        document.addEventListener('mousemove', (e) => {
+        this._onMouseMove = (e) => {
             if (!isDragging) return;
-            
+
             const container = this.splitContainerEl.getBoundingClientRect();
             const delta = e.clientX - startX;
             const deltaPercent = (delta / container.width) * 100;
-            
+
             this.dividerPosition = Math.max(20, Math.min(80, startPosition + deltaPercent));
             this.updateDividerPosition();
-        });
+        };
 
-        document.addEventListener('mouseup', () => {
+        this._onMouseUp = () => {
             if (isDragging) {
                 isDragging = false;
                 document.body.style.cursor = '';
                 this.saveState();
             }
-        });
+        };
+
+        document.addEventListener('mousemove', this._onMouseMove);
+        document.addEventListener('mouseup', this._onMouseUp);
     }
 
     updateDividerPosition() {
@@ -442,7 +447,7 @@ class SplitContainer {
     }
 
     setupKeyboardShortcuts() {
-        document.addEventListener('keydown', (e) => {
+        this._onKeyDown = (e) => {
             // Cmd/Ctrl + \ to toggle split
             if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
                 e.preventDefault();
@@ -465,7 +470,21 @@ class SplitContainer {
                     this.focusSplit(1);
                 }
             }
-        });
+        };
+        document.addEventListener('keydown', this._onKeyDown);
+    }
+
+    destroy() {
+        if (this._onMouseMove) {
+            document.removeEventListener('mousemove', this._onMouseMove);
+        }
+        if (this._onMouseUp) {
+            document.removeEventListener('mouseup', this._onMouseUp);
+        }
+        if (this._onKeyDown) {
+            document.removeEventListener('keydown', this._onKeyDown);
+        }
+        this.splits.forEach(split => split.destroy());
     }
 
     saveState() {

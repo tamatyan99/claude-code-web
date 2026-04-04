@@ -634,8 +634,9 @@ class ClaudeCodeWebInterface {
                             const clientsText = session.connectedClients === 1 ? '1 client' : `${session.connectedClients} clients`;
                             const safeName = this.escapeHtml(session.name);
                             const safeDir = session.workingDir ? this.escapeHtml(session.workingDir) : '';
+                            const safeId = session.id.replace(/"/g, '&quot;').replace(/</g, '&lt;');
                             return `
-                                <div class="session-item" data-session-id="${session.id}" style="cursor: pointer; padding: 15px; border: 1px solid #333; border-radius: 5px; margin-bottom: 10px;">
+                                <div class="session-item" data-session-id="${safeId}" style="cursor: pointer; padding: 15px; border: 1px solid #333; border-radius: 5px; margin-bottom: 10px;">
                                     <div class="session-info">
                                         <span class="session-status">${statusIcon}</span>
                                         <div class="session-details">
@@ -815,7 +816,12 @@ class ClaudeCodeWebInterface {
                 };
             
             this.socket.onmessage = (event) => {
-                this.handleMessage(JSON.parse(event.data));
+                try {
+                    this.handleMessage(JSON.parse(event.data));
+                } catch (e) {
+                    console.error('Failed to parse WebSocket message:', e);
+                    return;
+                }
             };
             
             this.socket.onclose = (event) => {
@@ -849,6 +855,11 @@ class ClaudeCodeWebInterface {
         if (this.usageUpdateTimer) {
             clearInterval(this.usageUpdateTimer);
             this.usageUpdateTimer = null;
+        }
+        // Clear heartbeat interval
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
         }
         // Clear live countdown timer
         this._stopLiveTimer();
@@ -900,8 +911,15 @@ class ClaudeCodeWebInterface {
                 }
                 
                 this.showOverlay('startPrompt');
+
+                // Execute any pending start command after session creation
+                if (this.pendingStartCommand) {
+                    const cmd = this.pendingStartCommand;
+                    this.pendingStartCommand = null;
+                    this.send({ type: cmd.type, options: cmd.options });
+                }
                 break;
-                
+
             case 'session_joined':
                 console.log('[session_joined] Message received, active:', message.active, 'tabs:', this.sessionTabManager?.tabs.size);
                 this.currentClaudeSessionId = message.sessionId;
@@ -1108,15 +1126,12 @@ class ClaudeCodeWebInterface {
         // If no session, create one first
         if (!this.currentClaudeSessionId) {
             const sessionName = `Session ${new Date().toLocaleString()}`;
-            this.send({ 
+            this.pendingStartCommand = { type: 'start_claude', options };
+            this.send({
                 type: 'create_session',
                 name: sessionName,
                 workingDir: this.selectedWorkingDir
             });
-            // Wait for session creation, then start Claude
-            setTimeout(() => {
-                this.send({ type: 'start_claude', options });
-            }, 500);
         } else {
             this.send({ type: 'start_claude', options });
         }
@@ -1132,15 +1147,12 @@ class ClaudeCodeWebInterface {
         // If no session, create one first
         if (!this.currentClaudeSessionId) {
             const sessionName = `Session ${new Date().toLocaleString()}`;
+            this.pendingStartCommand = { type: 'start_codex', options };
             this.send({
                 type: 'create_session',
                 name: sessionName,
                 workingDir: this.selectedWorkingDir
             });
-            // Wait for session creation, then start Codex
-            setTimeout(() => {
-                this.send({ type: 'start_codex', options });
-            }, 500);
         } else {
             this.send({ type: 'start_codex', options });
         }
@@ -1156,15 +1168,12 @@ class ClaudeCodeWebInterface {
         // If no session, create one first
         if (!this.currentClaudeSessionId) {
             const sessionName = `Session ${new Date().toLocaleString()}`;
+            this.pendingStartCommand = { type: 'start_agent', options };
             this.send({
                 type: 'create_session',
                 name: sessionName,
                 workingDir: this.selectedWorkingDir
             });
-            // Wait for session creation, then start Agent
-            setTimeout(() => {
-                this.send({ type: 'start_agent', options });
-            }, 500);
         } else {
             this.send({ type: 'start_agent', options });
         }
@@ -1181,8 +1190,8 @@ class ClaudeCodeWebInterface {
     toggleMobileMenu() {
         const mobileMenu = document.getElementById('mobileMenu');
         const hamburgerBtn = document.getElementById('hamburgerBtn');
-        mobileMenu.classList.toggle('active');
-        hamburgerBtn.classList.toggle('active');
+        mobileMenu?.classList.toggle('active');
+        hamburgerBtn?.classList.toggle('active');
     }
 
     closeMobileMenu() {
@@ -1339,7 +1348,7 @@ class ClaudeCodeWebInterface {
     }
 
     startHeartbeat() {
-        setInterval(() => {
+        this.heartbeatInterval = setInterval(() => {
             if (this.socket && this.socket.readyState === WebSocket.OPEN) {
                 this.send({ type: 'ping' });
             }
@@ -1409,11 +1418,6 @@ class ClaudeCodeWebInterface {
         
         // Reset the creating new session flag if canceling
         this.isCreatingNewSession = false;
-        
-        // If no folder selected, show error
-        if (!this.currentFolderPath) {
-            this.showError('You must select a folder to continue');
-        }
     }
 
     async loadFolders(path = null) {
@@ -1817,8 +1821,13 @@ class ClaudeCodeWebInterface {
             // Check if we're already connecting (readyState === 0 means CONNECTING)
             if (this.socket && this.socket.readyState === WebSocket.CONNECTING) {
                 // Wait for existing connection to complete
-                await new Promise((resolve) => {
+                await new Promise((resolve, reject) => {
                     const checkConnection = setInterval(() => {
+                        if (!this.socket || this.socket.readyState === WebSocket.CLOSED) {
+                            clearInterval(checkConnection);
+                            reject(new Error('Socket closed'));
+                            return;
+                        }
                         if (this.socket.readyState === WebSocket.OPEN) {
                             clearInterval(checkConnection);
                             resolve();
