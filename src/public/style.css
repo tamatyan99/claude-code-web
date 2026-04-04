@@ -1876,13 +1876,12 @@ pre, code {
 
 /* ─── Mobile Key Toolbar ─── */
 .mobile-key-toolbar {
-    display: none; /* Hidden by default, shown on mobile */
+    display: flex;
     align-items: center;
     gap: 4px;
     padding: 5px 8px;
     background-color: var(--bg-secondary);
     border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
@@ -1892,20 +1891,6 @@ pre, code {
 
 .mobile-key-toolbar::-webkit-scrollbar {
     display: none;
-}
-
-@media (max-width: 1024px) and (hover: none) and (pointer: coarse),
-       (max-width: 768px) {
-    .mobile-key-toolbar {
-        display: flex;
-    }
-
-    /* Prevent page from scrolling when virtual keyboard opens */
-    html, body {
-        overflow: hidden;
-        position: fixed;
-        width: 100%;
-    }
 }
 
 .mkey {

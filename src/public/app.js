@@ -236,8 +236,46 @@ class ClaudeCodeWebInterface {
     }
 
     setupMobileKeyToolbar() {
-        const toolbar = document.getElementById('mobileKeyToolbar');
-        if (!toolbar) return;
+        // Dynamically create and insert the toolbar into #app
+        const app = document.getElementById('app');
+        if (!app) return;
+
+        const toolbar = document.createElement('div');
+        toolbar.className = 'mobile-key-toolbar';
+        toolbar.id = 'mobileKeyToolbar';
+
+        const keys = [
+            { key: 'escape', label: 'Esc' },
+            { key: 'tab', label: 'Tab' },
+            { key: 'ctrl', label: 'Ctrl', cls: 'mkey-toggle', id: 'mkeyCtrl' },
+            { sep: true },
+            { key: 'up', label: '\u25B2' },
+            { key: 'down', label: '\u25BC' },
+            { key: 'left', label: '\u25C0' },
+            { key: 'right', label: '\u25B6' },
+            { sep: true },
+            { key: 'slash', label: '/' },
+            { key: 'pipe', label: '|' },
+            { key: 'tilde', label: '~' },
+        ];
+
+        keys.forEach(k => {
+            if (k.sep) {
+                const sep = document.createElement('div');
+                sep.className = 'mkey-separator';
+                toolbar.appendChild(sep);
+                return;
+            }
+            const btn = document.createElement('button');
+            btn.className = 'mkey' + (k.cls ? ' ' + k.cls : '');
+            btn.dataset.key = k.key;
+            if (k.id) btn.id = k.id;
+            btn.textContent = k.label;
+            toolbar.appendChild(btn);
+        });
+
+        // Append at the end of #app (below main, above nothing)
+        app.appendChild(toolbar);
 
         this._ctrlActive = false;
 
@@ -273,12 +311,10 @@ class ClaudeCodeWebInterface {
 
             // Apply Ctrl modifier
             if (this._ctrlActive && data.length === 1) {
-                // Convert to ctrl code: Ctrl+C = \x03, Ctrl+D = \x04, etc.
                 const code = data.toUpperCase().charCodeAt(0) - 64;
                 if (code > 0 && code < 32) {
                     data = String.fromCharCode(code);
                 }
-                // Reset Ctrl after use
                 this._ctrlActive = false;
                 document.getElementById('mkeyCtrl')?.classList.remove('mkey-active');
             }
