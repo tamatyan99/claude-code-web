@@ -573,6 +573,13 @@ class ClaudeCodeWebInterface {
     }
 
     disconnect() {
+        // Clear usage polling timer
+        if (this.usageUpdateTimer) {
+            clearInterval(this.usageUpdateTimer);
+            this.usageUpdateTimer = null;
+        }
+        // Clear live countdown timer
+        this._stopLiveTimer();
         if (this.socket) {
             this.socket.close();
             this.socket = null;
@@ -1027,7 +1034,18 @@ class ClaudeCodeWebInterface {
     }
 
     applySettings(settings) {
-        // Token stats bar removed - no longer needed
+        // Toggle usage bar visibility based on settings
+        const usageBar = document.getElementById('usageBar');
+        if (usageBar) {
+            if (settings.showTokenStats) {
+                // Show bar (actual display is controlled by updateUsageDisplay)
+                // Request fresh stats to populate it
+                this.requestUsageStats();
+            } else {
+                usageBar.style.display = 'none';
+            }
+        }
+
         // Apply theme (dark is default; light sets attribute)
         if (settings.theme === 'light') {
             document.documentElement.setAttribute('data-theme', 'light');
@@ -1955,213 +1973,157 @@ class ClaudeCodeWebInterface {
         }
     }
 
-    startSessionTimerUpdate() {
-        // Token usage timer removed - no UI elements to update
-        return;
-    }
+    // startSessionTimerUpdate removed — live timer handled by _startLiveTimer()
 
     updateUsageDisplay(sessionStats, dailyStats, sessionTimer, analytics, burnRate, plan, limits) {
-        // Token usage display removed - no UI elements to update
-        return;
-        
-        // Container is already visible by default
-        
-        // Check if mobile screen
-        const isMobile = window.innerWidth <= 768;
-        const isSmallMobile = window.innerWidth <= 480;
-        
-        // Format tokens (K/M notation)
+        const usageBar = document.getElementById('usageBar');
+        if (!usageBar) return;
+
+        // Check settings - hide bar if user disabled token stats
+        const settings = this.loadSettings();
+        if (!settings.showTokenStats) {
+            usageBar.style.display = 'none';
+            return;
+        }
+
+        // Helper: format tokens (K/M notation)
         const formatTokens = (tokens) => {
-            if (tokens >= 1000000) {
-                return (tokens / 1000000).toFixed(1) + 'M';
-            } else if (tokens >= 1000) {
-                return (tokens / 1000).toFixed(1) + 'K';
-            }
+            if (tokens >= 1000000) return (tokens / 1000000).toFixed(1) + 'M';
+            if (tokens >= 1000) return (tokens / 1000).toFixed(1) + 'K';
             return tokens.toString();
         };
-        
-        // Update display for current Claude session
-        // If session is expired (remainingMs === 0), still show the stats but with 0 time
-        if (sessionStats && sessionTimer && !sessionTimer.isExpired) {
-            // Show session timer - just time remaining
-            let sessionText;
-            if (sessionTimer.remainingMs > 0) {
-                const remainingHours = Math.floor(sessionTimer.remainingMs / (1000 * 60 * 60));
-                const remainingMinutes = Math.floor((sessionTimer.remainingMs % (1000 * 60 * 60)) / (1000 * 60));
-                sessionText = `${remainingHours}h ${remainingMinutes}m`;
+
+        // Store plan/limits for reference
+        this.currentPlan = plan;
+        this.planLimits = limits;
+
+        if (sessionStats && sessionStats.totalTokens !== undefined) {
+            // Show the bar
+            usageBar.style.display = 'flex';
+
+            // --- Session Timer ---
+            const timerEl = document.getElementById('usageTimer');
+            if (sessionTimer && !sessionTimer.isExpired && sessionTimer.remainingMs > 0) {
+                const rh = Math.floor(sessionTimer.remainingMs / (1000 * 60 * 60));
+                const rm = Math.floor((sessionTimer.remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+                timerEl.textContent = `${rh}h ${String(rm).padStart(2, '0')}m`;
+                // Store for live countdown
+                this._sessionEndTime = Date.now() + sessionTimer.remainingMs;
+                this._startLiveTimer();
+            } else if (sessionTimer && sessionTimer.isExpired) {
+                timerEl.textContent = 'Expired';
+                this._stopLiveTimer();
             } else {
-                // Session expired or no active session - show zeros
-                sessionText = '0h 0m';
+                timerEl.textContent = '--:--';
             }
-            
-            // Just show the time, no burn rate indicator in session field
-            document.getElementById('usageTitle').textContent = sessionText;
-            
-            // Display tokens - on mobile just show percentage
+
+            // --- Token Usage + Progress ---
+            const tokensEl = document.getElementById('usageTokens');
+            const progressFill = document.getElementById('usageProgressFill');
             const actualTokens = sessionStats.totalTokens || 0;
-            let tokenDisplay = actualTokens.toLocaleString();
-            let percentUsed = 0;
-            
-            // Get the actual limit for custom plans (P90 based)
-            let tokenLimit = this.planLimits?.tokens;
-            if (!tokenLimit && this.currentPlan === 'custom') {
-                // Default P90 limit for custom plans
-                tokenLimit = 188026;
-            }
-            
+            let tokenLimit = limits?.tokens;
+
+            const isMobile = window.innerWidth <= 768;
+            const isSmallMobile = window.innerWidth <= 480;
+
             if (tokenLimit) {
-                percentUsed = (actualTokens / tokenLimit) * 100;
-                // Mobile: just percentage, Desktop: full display
-                if (isMobile) {
-                    tokenDisplay = `${percentUsed.toFixed(1)}%`;
+                const pct = Math.min(100, (actualTokens / tokenLimit) * 100);
+                if (isSmallMobile) {
+                    tokensEl.textContent = `${pct.toFixed(1)}%`;
+                } else if (isMobile) {
+                    tokensEl.textContent = `${formatTokens(actualTokens)} (${pct.toFixed(0)}%)`;
                 } else {
-                    tokenDisplay = `${actualTokens.toLocaleString()} (${percentUsed.toFixed(1)}%)`;
+                    tokensEl.textContent = `${formatTokens(actualTokens)} / ${formatTokens(tokenLimit)}`;
                 }
-                
-                // Update progress bar
-                const progressBar = document.getElementById('usageProgressBar');
-                const progressText = document.getElementById('usageProgressText');
-                const progressContainer = document.getElementById('usageProgress');
-                
-                if (progressBar && progressText && progressContainer) {
-                    progressContainer.style.display = 'block';
-                    progressBar.style.width = Math.min(100, percentUsed) + '%';
-                    progressText.textContent = percentUsed.toFixed(1) + '%';
-                    
-                    // Change color based on usage
-                    progressBar.className = 'usage-progress-bar';
-                    if (percentUsed >= 90) {
-                        progressBar.classList.add('danger');
-                    } else if (percentUsed >= 70) {
-                        progressBar.classList.add('warning');
-                    } else {
-                        progressBar.classList.add('success');
-                    }
-                }
+                // Progress bar
+                progressFill.style.width = pct + '%';
+                progressFill.className = 'usage-progress-fill';
+                if (pct >= 90) progressFill.classList.add('danger');
+                else if (pct >= 70) progressFill.classList.add('warning');
+            } else {
+                tokensEl.textContent = formatTokens(actualTokens);
+                progressFill.style.width = '0%';
             }
-            document.getElementById('usageTokens').textContent = tokenDisplay;
-            
-            // Start the live timer update
-            this.startSessionTimerUpdate();
-            
-            // Format cost - CSS handles hiding on mobile
+
+            // --- Cost ---
+            const costEl = document.getElementById('usageCost');
             const cost = sessionStats.totalCost || 0;
-            const costText = cost > 0 ? `$${cost.toFixed(2)}` : '$0.00';
-            document.getElementById('usageCost').textContent = costText;
-            
-            // Show burn rate - on mobile just show icon
-            if (sessionTimer.burnRate && sessionTimer.burnRate > 0) {
-                const burnRate = Math.round(sessionTimer.burnRate);
-                let rateDisplay;
-                
-                if (isMobile) {
-                    rateDisplay = `<span class="icon" aria-hidden="true">${window.icons?.chartLine?.(12) || ''}</span> ${burnRate}`;
-                } else {
-                    const burnRateText = `${burnRate} tok/min`;
-                    rateDisplay = `<span class="icon" aria-hidden="true">${window.icons?.chartLine?.(12) || ''}</span> ${burnRateText}`;
-                }
-                
-                document.getElementById('usageRate').innerHTML = rateDisplay;
-                
-                // Add depletion time if available
-                if (sessionTimer.depletionTime && sessionTimer.depletionConfidence > 0.5) {
-                    const depletionDate = new Date(sessionTimer.depletionTime);
-                    const now = new Date();
-                    const minutesToDepletion = Math.max(0, (depletionDate - now) / 1000 / 60);
-                    
-                    if (minutesToDepletion < 60) {
-                        document.getElementById('usageRate').title = `Tokens depleting in ~${Math.round(minutesToDepletion)} minutes`;
+            costEl.textContent = cost > 0 ? `$${cost.toFixed(2)}` : '$0.00';
+
+            // --- Burn Rate ---
+            const rateEl = document.getElementById('usageRate');
+            const br = (sessionTimer && sessionTimer.burnRate > 0) ? sessionTimer.burnRate
+                      : (burnRate && burnRate.rate > 0) ? burnRate.rate : 0;
+            if (br > 0) {
+                rateEl.textContent = `${Math.round(br)} tok/min`;
+                // Depletion tooltip
+                if (sessionTimer?.depletionTime && sessionTimer.depletionConfidence > 0.5) {
+                    const minsLeft = Math.max(0, (new Date(sessionTimer.depletionTime) - Date.now()) / 60000);
+                    const rateItem = document.getElementById('usageRateItem');
+                    if (minsLeft < 60) {
+                        rateItem.title = `Depleting in ~${Math.round(minsLeft)}m`;
                     } else {
-                        const hoursToDepletion = Math.floor(minutesToDepletion / 60);
-                        document.getElementById('usageRate').title = `Tokens depleting in ~${hoursToDepletion}h ${Math.round(minutesToDepletion % 60)}m`;
+                        rateItem.title = `Depleting in ~${Math.floor(minsLeft / 60)}h ${Math.round(minsLeft % 60)}m`;
                     }
                 }
             } else {
-                // Fallback to simple rate
-                const hours = sessionTimer.hours + (sessionTimer.minutes / 60) + (sessionTimer.seconds / 3600);
-                const rate = hours > 0 ? sessionStats.requests / hours : 0;
-                document.getElementById('usageRate').innerHTML = rate > 0 ? `<span class="icon" aria-hidden="true">${window.icons?.chartLine?.(12) || ''}</span> ${rate.toFixed(1)}/h` : '-';
+                rateEl.textContent = '-';
             }
-            
-            // Show model distribution
-            if (sessionStats.models) {
-                const models = sessionStats.models;
-                let totalTokens = 0;
-                let opusTokens = 0;
-                let sonnetTokens = 0;
-                
-                // Calculate totals
-                for (const [model, data] of Object.entries(models)) {
-                    const modelTokens = (data.inputTokens || 0) + (data.outputTokens || 0);
-                    totalTokens += modelTokens;
-                    
-                    if (model.toLowerCase().includes('opus')) {
-                        opusTokens += modelTokens;
-                    } else if (model.toLowerCase().includes('sonnet')) {
-                        sonnetTokens += modelTokens;
-                    }
+
+            // --- Model Distribution ---
+            const modelEl = document.getElementById('usageModel');
+            if (sessionStats.models && Object.keys(sessionStats.models).length > 0) {
+                let totalTok = 0, opusTok = 0, sonnetTok = 0, haikuTok = 0;
+                for (const [model, data] of Object.entries(sessionStats.models)) {
+                    const mt = (data.inputTokens || 0) + (data.outputTokens || 0);
+                    totalTok += mt;
+                    if (model.includes('opus')) opusTok += mt;
+                    else if (model.includes('sonnet')) sonnetTok += mt;
+                    else if (model.includes('haiku')) haikuTok += mt;
                 }
-                
-                // Calculate percentages
-                let modelText = '';
-                if (totalTokens > 0) {
-                    const opusPercent = (opusTokens / totalTokens) * 100;
-                    const sonnetPercent = (sonnetTokens / totalTokens) * 100;
-                    const isMobile = window.innerWidth <= 768;
-                    
-                    // Use short names on mobile, full names on desktop
-                    const opusName = isMobile ? 'O' : 'Opus';
-                    const sonnetName = isMobile ? 'S' : 'Sonnet';
-                    
-                    if (opusPercent > 0 && sonnetPercent > 0) {
-                        modelText = `${opusName} ${opusPercent.toFixed(0)}% / ${sonnetName} ${sonnetPercent.toFixed(0)}%`;
-                    } else if (opusPercent > 0) {
-                        modelText = `${opusName} ${opusPercent.toFixed(0)}%`;
-                    } else if (sonnetPercent > 0) {
-                        modelText = `${sonnetName} ${sonnetPercent.toFixed(0)}%`;
-                    } else {
-                        modelText = 'Unknown';
-                    }
+                if (totalTok > 0) {
+                    const parts = [];
+                    if (opusTok > 0) parts.push(`Opus ${((opusTok / totalTok) * 100).toFixed(0)}%`);
+                    if (sonnetTok > 0) parts.push(`Sonnet ${((sonnetTok / totalTok) * 100).toFixed(0)}%`);
+                    if (haikuTok > 0) parts.push(`Haiku ${((haikuTok / totalTok) * 100).toFixed(0)}%`);
+                    modelEl.textContent = parts.join(' / ') || 'Unknown';
                 } else {
-                    modelText = 'No usage';
+                    modelEl.textContent = '-';
                 }
-                
-                document.getElementById('usageModel').textContent = modelText;
+            } else {
+                modelEl.textContent = '-';
             }
         } else {
-            // No active session or expired session - show zeros
-            const isMobile = window.innerWidth <= 768;
-            
-            document.getElementById('usageTitle').textContent = '0h 0m';
-            document.getElementById('usageTokens').textContent = isMobile ? '0%' : '0';
-            document.getElementById('usageCost').textContent = '$0.00';
-            document.getElementById('usageRate').textContent = '-';
-            document.getElementById('usageModel').textContent = 'No usage';
-            
-            // Stop the timer update
-            if (this.sessionTimerInterval) {
-                clearInterval(this.sessionTimerInterval);
-                this.sessionTimerInterval = null;
-            }
-            
-            // Hide progress bar when no session
-            const progressContainer = document.getElementById('usageProgress');
-            if (progressContainer) {
-                progressContainer.style.display = 'none';
-            }
+            // No meaningful data — hide the bar
+            usageBar.style.display = 'none';
+            this._stopLiveTimer();
         }
-        
-        // Removed model breakdown and projections - compact view doesn't need them
     }
 
-    getBurnRateIndicator(rate) {
-        // Minimalist indicator using a line chart icon and label
-        const icon = window.icons?.chartLine?.(12) || '';
-        if (rate > 1000) return `<span class="icon" aria-hidden="true">${icon}</span> Very high`;
-        if (rate > 500) return `<span class="icon" aria-hidden="true">${icon}</span> High`;
-        if (rate > 100) return `<span class="icon" aria-hidden="true">${icon}</span> Moderate`;
-        if (rate > 50) return `<span class="icon" aria-hidden="true">${icon}</span> Low`;
-        return `<span class="icon" aria-hidden="true">${icon}</span> Very low`;
+    _startLiveTimer() {
+        if (this._liveTimerInterval) return; // Already running
+        this._liveTimerInterval = setInterval(() => {
+            if (!this._sessionEndTime) { this._stopLiveTimer(); return; }
+            const remaining = Math.max(0, this._sessionEndTime - Date.now());
+            const timerEl = document.getElementById('usageTimer');
+            if (!timerEl) return;
+            if (remaining <= 0) {
+                timerEl.textContent = 'Expired';
+                this._stopLiveTimer();
+                return;
+            }
+            const rh = Math.floor(remaining / (1000 * 60 * 60));
+            const rm = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+            timerEl.textContent = `${rh}h ${String(rm).padStart(2, '0')}m`;
+        }, 30000); // Update every 30s
+    }
+
+    _stopLiveTimer() {
+        if (this._liveTimerInterval) {
+            clearInterval(this._liveTimerInterval);
+            this._liveTimerInterval = null;
+        }
+        this._sessionEndTime = null;
     }
     
     showNotification(message) {

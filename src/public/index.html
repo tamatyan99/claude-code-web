@@ -103,6 +103,43 @@
             </div>
         </div>
 
+        <!-- Usage Stats Bar -->
+        <div class="usage-bar" id="usageBar" style="display: none;">
+            <div class="usage-item usage-timer" id="usageTimerItem" title="Session time remaining">
+                <svg class="usage-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+                <span id="usageTimer">--:--</span>
+            </div>
+            <div class="usage-divider"></div>
+            <div class="usage-item usage-tokens" id="usageTokensItem" title="Token usage">
+                <div class="usage-progress-wrap">
+                    <div class="usage-progress-track">
+                        <div class="usage-progress-fill" id="usageProgressFill"></div>
+                    </div>
+                </div>
+                <span id="usageTokens">0 / 0</span>
+            </div>
+            <div class="usage-divider usage-hide-cost"></div>
+            <div class="usage-item usage-cost usage-hide-cost" id="usageCostItem" title="Estimated cost">
+                <svg class="usage-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                </svg>
+                <span id="usageCost">$0.00</span>
+            </div>
+            <div class="usage-divider usage-hide-rate"></div>
+            <div class="usage-item usage-rate usage-hide-rate" id="usageRateItem" title="Burn rate (tokens/min)">
+                <svg class="usage-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+                <span id="usageRate">-</span>
+            </div>
+            <div class="usage-divider usage-hide-mobile"></div>
+            <div class="usage-item usage-model usage-hide-mobile" id="usageModelItem" title="Model distribution">
+                <span id="usageModel">-</span>
+            </div>
+        </div>
+
         <main class="main">
             <div class="terminal-container" id="terminalContainer" data-view="single">
                 <div class="terminal-wrapper">
