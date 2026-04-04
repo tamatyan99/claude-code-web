@@ -2,6 +2,26 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Subagent & Cost Optimization Rules
+
+**Always use subagents aggressively and pick the right model for each task:**
+
+- **Haiku** (`model: "haiku"`): File search, grep, simple lookups, listing files, reading configs, syntax checks — anything that just retrieves or confirms information.
+- **Sonnet** (`model: "sonnet"`): Code exploration, codebase understanding, moderate analysis, summarizing findings, planning small features.
+- **Opus** (`model: "opus"`): Complex architectural decisions, writing large implementations, multi-file refactoring, security reviews — only when deep reasoning is required.
+
+**When to spawn subagents:**
+- Any search/exploration task (use Explore agent with haiku or sonnet)
+- Research questions (use claude-code-guide agent with sonnet)
+- Running tests or builds (use general-purpose agent with haiku)
+- Parallel independent tasks — always launch multiple agents concurrently
+
+**Never use Opus for:**
+- Simple file searches or grep operations
+- Reading a file to check its contents
+- Running a single command
+- Looking up documentation
+
 ## Project Overview
 
 Claude Code Web is a web-based interface for the Claude Code CLI. It provides two UI modes:
