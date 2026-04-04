@@ -43,6 +43,9 @@
   },
   "homepage": "https://github.com/vultuk/claude-code-web#readme",
   "devDependencies": {
-    "mocha": "^11.7.1"
+    "mocha": "^11.3.0"
+  },
+  "overrides": {
+    "serialize-javascript": "^7.0.5"
   }
 }

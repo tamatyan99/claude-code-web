@@ -80,11 +80,31 @@ class SdkSession {
       onError = () => {},
     } = options;
 
+    // Validate prompt length
+    const MAX_PROMPT_LENGTH = 1_000_000; // 1MB
+    if (prompt && prompt.length > MAX_PROMPT_LENGTH) {
+      throw new Error(`Prompt too long: ${prompt.length} characters (max ${MAX_PROMPT_LENGTH})`);
+    }
+
+    // Concurrent prompt guard
+    if (session.processing) {
+      throw new Error(`Session ${sessionId} is already processing a prompt`);
+    }
+    session.processing = true;
+
     const args = [
       '-p', prompt,
       '--output-format', 'stream-json',
       '--verbose',
     ];
+
+    // Validate model name — must not start with a dash (flag injection) and must
+    // contain only safe characters (letters, digits, dots, underscores, colons,
+    // and interior hyphens).
+    if (model && (model.startsWith('-') || !/^[a-zA-Z0-9._:-]+$/.test(model))) {
+      session.processing = false;
+      throw new Error(`Invalid model name: ${model}`);
+    }
 
     if (model) {
       args.push('--model', model);
@@ -99,9 +119,15 @@ class SdkSession {
     }
 
     // Permission mode
-    const permMode = options.permissionMode || 'default';
+    const VALID_PERMISSION_MODES = ['default', 'bypassPermissions', 'acceptEdits', 'plan'];
+    const permMode = options.permissionMode || 'bypassPermissions';
+    if (!VALID_PERMISSION_MODES.includes(permMode)) {
+      session.processing = false;
+      throw new Error(`Invalid permission mode: ${permMode}`);
+    }
     args.push('--permission-mode', permMode);
 
+    // Log args but omit the prompt value to avoid leaking it into logs
     console.log(`[SDK] Starting: claude ${args.slice(0, 5).join(' ')}${args.length > 5 ? '...' : ''}`);
     console.log(`[SDK] Working dir: ${session.workingDir}`);
 
@@ -169,6 +195,11 @@ class SdkSession {
       console.log(`[SDK] Process exited: code=${code}, signal=${signal}`);
       session.active = false;
       session.process = null;
+      session.processing = false;
+      if (session.killTimeout) {
+        clearTimeout(session.killTimeout);
+        session.killTimeout = null;
+      }
 
       // Process any remaining buffer
       if (buffer.trim()) {
@@ -188,6 +219,7 @@ class SdkSession {
       console.error(`[SDK] Process error:`, err);
       session.active = false;
       session.process = null;
+      session.processing = false;
       try { onError(err); } catch (_) {}
     });
 
@@ -201,17 +233,18 @@ class SdkSession {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
-    if (session.process) {
-      const proc = session.process;
-      proc.kill('SIGTERM');
-      // Force kill after 5s
-      const killTimeout = setTimeout(() => {
-        if (session.process) {
-          try { session.process.kill('SIGKILL'); } catch (_) {}
-        }
-      }, 5000);
-      proc.on('close', () => clearTimeout(killTimeout));
+    if (!session.process) {
+      this.sessions.delete(sessionId);
+      return;
     }
+
+    session.process.kill('SIGTERM');
+    // Force kill after 5s; stored on session so the close handler can cancel it
+    session.killTimeout = setTimeout(() => {
+      if (session.process) {
+        try { session.process.kill('SIGKILL'); } catch (_) {}
+      }
+    }, 5000);
     session.active = false;
   }
 

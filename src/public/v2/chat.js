@@ -6,6 +6,8 @@ class ChatUI {
         this.isProcessing = false;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
+        this.reconnectTimer = null;
+        this.lastResultRendered = false;
         this.messageIdCounter = 0;
 
         this.messagesEl = document.getElementById('chatMessages');
@@ -65,19 +67,21 @@ class ChatUI {
         };
 
         this.socket.onmessage = (event) => {
+            let data;
             try {
-                const msg = JSON.parse(event.data);
-                this.handleMessage(msg);
-            } catch (e) {
-                console.error('[Chat] Failed to parse message:', e);
+                data = JSON.parse(event.data);
+            } catch (err) {
+                console.error('[Chat] Failed to parse WebSocket message:', err);
                 return;
             }
+            this.handleMessage(data);
         };
 
         this.socket.onclose = () => {
             this.setStatus('disconnected', 'Disconnected');
+            clearTimeout(this.reconnectTimer);
             if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                setTimeout(() => {
+                this.reconnectTimer = setTimeout(() => {
                     this.reconnectAttempts++;
                     this.connect();
                 }, 1000 * Math.pow(2, this.reconnectAttempts));
@@ -109,15 +113,19 @@ class ChatUI {
                 this.send({ type: 'join_session', sessionId: this.sessionId });
                 break;
 
-            case 'session_joined':
-                // Start SDK mode with permission setting
+            case 'session_joined': {
+                // Start SDK mode; URL param 'permissions=prompt' takes precedence,
+                // otherwise fall back to the permission select value
+                const urlParams = new URLSearchParams(window.location.search);
+                const skipPermissions = urlParams.has('permissions')
+                    ? urlParams.get('permissions') !== 'prompt'
+                    : this.permissionSelect.value === 'bypass';
                 this.send({
                     type: 'start_sdk',
-                    options: {
-                        dangerouslySkipPermissions: this.permissionSelect.value === 'bypass'
-                    }
+                    options: { dangerouslySkipPermissions: skipPermissions }
                 });
                 break;
+            }
 
             case 'sdk_started':
                 this.setStatus('connected', 'Ready');
@@ -197,7 +205,7 @@ class ChatUI {
                 }
 
                 for (const tool of toolUses) {
-                    this.appendToolCard(tool.name, tool.input);
+                    this.appendToolCard(tool.name, tool.input, tool.id);
                 }
                 break;
             }
@@ -221,8 +229,9 @@ class ChatUI {
                     this.totalCost += msg.cost_usd;
                     this.costDisplay.textContent = `$${this.totalCost.toFixed(4)}`;
                 }
-                if (msg.result) {
-                    // Deduplicate: check last assistant message by tracking data attribute
+                if (msg.result && !this.lastResultRendered) {
+                    this.lastResultRendered = true;
+                    // Deduplicate: check last assistant message content before appending
                     const allAssistant = this.messagesEl.querySelectorAll('.msg-assistant');
                     const lastAssistantMsg = allAssistant.length > 0 ? allAssistant[allAssistant.length - 1] : null;
                     const lastContent = lastAssistantMsg ? lastAssistantMsg.querySelector('.msg-content') : null;
@@ -253,6 +262,7 @@ class ChatUI {
     sendMessage() {
         const text = this.inputEl.value.trim();
         if (!text || this.isProcessing) return;
+        this.lastResultRendered = false;
 
         // Hide welcome
         if (this.welcomeEl) {
@@ -309,9 +319,12 @@ class ChatUI {
         this.scrollToBottom();
     }
 
-    appendToolCard(toolName, input) {
+    appendToolCard(toolName, input, toolId) {
         const card = document.createElement('div');
         card.className = 'tool-card';
+        if (toolId) {
+            card.dataset.toolId = toolId;
+        }
 
         const header = document.createElement('div');
         header.className = 'tool-card-header';
@@ -348,11 +361,12 @@ class ChatUI {
             text = JSON.stringify(content, null, 2);
         }
 
-        // Find the last tool card and add result
-        const cards = this.messagesEl.querySelectorAll('.tool-card');
-        if (cards.length > 0) {
-            const lastCard = cards[cards.length - 1];
-            const body = lastCard.querySelector('.tool-card-body');
+        // Find the matching tool card by ID, or fall back to last card
+        const escapedId = CSS.escape(toolUseId);
+        const card = this.messagesEl.querySelector(`.tool-card[data-tool-id="${escapedId}"]`)
+            || this.messagesEl.querySelector('.tool-card:last-child');
+        if (card) {
+            const body = card.querySelector('.tool-card-body');
             if (body) {
                 body.textContent += '\n--- Result ---\n' + text;
             }
@@ -463,10 +477,10 @@ class ChatUI {
         html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
 
         // Bold: **...**
-        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/\*\*([^\n]+?)\*\*/g, '<strong>$1</strong>');
 
         // Italic: *...*
-        html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+        html = html.replace(/(?<!\*)\*(?!\*)([^\n]+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
 
         // Line breaks
         html = html.replace(/\n/g, '<br>');

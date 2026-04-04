@@ -329,8 +329,9 @@ class UsageReader {
     const files = [];
     
     try {
-      const projectDirs = await fs.readdir(this.claudeProjectsPath);
-      
+      let projectDirs = await fs.readdir(this.claudeProjectsPath);
+      projectDirs = projectDirs.filter(name => !name.includes('..') && !name.includes(path.sep));
+
       for (const projectDir of projectDirs) {
         const projectPath = path.join(this.claudeProjectsPath, projectDir);
         const stat = await fs.stat(projectPath);
@@ -555,7 +556,11 @@ class UsageReader {
       if (!sessionId) {
         return null;
       }
-      
+
+      if (!/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
+        return null;
+      }
+
       // Find the JSONL file for this session
       const sessionFile = path.join(this.claudeProjectsPath, process.cwd().replace(/\//g, '-'), `${sessionId}.jsonl`);
       
@@ -817,7 +822,8 @@ class UsageReader {
       let processedEntries = new Set();
       
       for (const entry of todayEntries) {
-        if (processedEntries.has(`${entry.timestamp}-${entry.model || ''}-${entry.inputTokens || 0}`)) {
+        const entryKey = `${entry.timestamp}_${entry.type || ''}_${entry.model || ''}_${entry.inputTokens || 0}`;
+        if (processedEntries.has(entryKey)) {
           continue;
         }
         
@@ -848,7 +854,7 @@ class UsageReader {
           for (const e of todayEntries) {
             const eTime = new Date(e.timestamp);
             if (eTime >= sessionStart && eTime <= actualSessionEnd) {
-              processedEntries.add(`${e.timestamp}-${e.model || ''}-${e.inputTokens || 0}`);
+              processedEntries.add(`${e.timestamp}_${e.type || ''}_${e.model || ''}_${e.inputTokens || 0}`);
             }
           }
         }

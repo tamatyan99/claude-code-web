@@ -11,7 +11,15 @@ describe('Server Aliases', function() {
   });
 
   it('should default aliases when not provided', function() {
-    const server = new ClaudeCodeWebServer({});
-    assert.ok(server.aliases.claude && server.aliases.claude.length > 0);
+    // Temporarily clear any environment overrides so true defaults are tested
+    const savedClaude = process.env.CLAUDE_ALIAS;
+    delete process.env.CLAUDE_ALIAS;
+
+    const server = new ClaudeCodeWebServer({ noAuth: true });
+
+    assert.strictEqual(server.aliases.claude, 'Claude');
+
+    // Restore environment variables
+    if (savedClaude !== undefined) process.env.CLAUDE_ALIAS = savedClaude;
   });
 });
