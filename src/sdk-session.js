@@ -120,7 +120,7 @@ class SdkSession {
 
     // Permission mode
     const VALID_PERMISSION_MODES = ['default', 'bypassPermissions', 'acceptEdits', 'plan'];
-    const permMode = options.permissionMode || 'bypassPermissions';
+    const permMode = options.permissionMode || 'default';
     if (!VALID_PERMISSION_MODES.includes(permMode)) {
       session.processing = false;
       throw new Error(`Invalid permission mode: ${permMode}`);
@@ -251,8 +251,8 @@ class SdkSession {
   /**
    * Remove a session entirely.
    */
-  removeSession(sessionId) {
-    this.stopSession(sessionId);
+  async removeSession(sessionId) {
+    await this.stopSession(sessionId);
     this.sessions.delete(sessionId);
   }
 

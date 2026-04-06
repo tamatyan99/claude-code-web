@@ -24,7 +24,7 @@ class ClaudeCodeWebServer {
     this.selectedWorkingDir = null;
     this.baseFolder = process.cwd(); // The folder where the app runs from
     // Session duration in hours (default to 5 hours from first message)
-    this.sessionDurationHours = parseFloat(process.env.CLAUDE_SESSION_HOURS || options.sessionHours || 5);
+    this.sessionDurationHours = parseFloat(process.env.CLAUDE_SESSION_HOURS || options.sessionHours || 5) || 5;
 
     this.app = express();
     this.claudeSessions = new Map(); // Persistent sessions
@@ -35,7 +35,7 @@ class ClaudeCodeWebServer {
     this.usageAnalytics = new UsageAnalytics({
       sessionDurationHours: this.sessionDurationHours,
       plan: options.plan || process.env.CLAUDE_PLAN || 'max20',
-      customCostLimit: parseFloat(process.env.CLAUDE_COST_LIMIT || options.customCostLimit || 50.00)
+      customCostLimit: parseFloat(process.env.CLAUDE_COST_LIMIT || options.customCostLimit || 50.00) || 50.00
     });
     this.autoSaveInterval = null;
     this.startTime = Date.now(); // Track server start time

@@ -544,8 +544,8 @@ class UsageReader {
     const estimatedDailyLimit = 100; // Rough estimate
     const estimatedTokenLimit = 1000000; // Rough estimate
     
-    stats.requestPercentage = (stats.projectedDaily / estimatedDailyLimit) * 100;
-    stats.tokenPercentage = ((stats.tokensPerHour * 24) / estimatedTokenLimit) * 100;
+    stats.requestPercentage = (stats.projectedDaily / estimatedDailyLimit) * 100 || 0;
+    stats.tokenPercentage = (((stats.tokensPerHour || 0) * 24) / estimatedTokenLimit) * 100;
 
     return stats;
   }
@@ -704,7 +704,7 @@ class UsageReader {
       }
       
       this.overlappingSessions = overlapping;
-      return sessions;
+      return overlapping;
     } catch (error) {
       console.error('Error detecting overlapping sessions:', error);
       return [];

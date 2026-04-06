@@ -30,7 +30,6 @@ class ChatUI {
         this.costDisplay = document.getElementById('costDisplay');
         this.modelSelect = document.getElementById('modelSelect');
         this.permissionSelect = document.getElementById('permissionSelect');
-        this.welcomeEl = document.getElementById('welcomeMessage');
         this.workingDirEl = document.getElementById('workingDirDisplay');
         this.sidebar = document.getElementById('sidebar');
         this.sidebarToggle = document.getElementById('sidebarToggle');
@@ -681,7 +680,6 @@ class ChatUI {
         const burnEl = document.getElementById('usageBurnRate');
         if (msg.burnRate && msg.burnRate.rate > 0) {
             const rate = Math.round(msg.burnRate.rate);
-            const trend = msg.sessionTimer?.burnRate > 0 ? '' : '';
             burnEl.textContent = `${rate} tok/min`;
         } else {
             burnEl.textContent = '-- tok/min';
@@ -1107,8 +1105,9 @@ class ChatUI {
 
     replayBuffer(buffer) {
         // Hide welcome on replay
-        if (this.welcomeEl && buffer.length > 0) {
-            this.welcomeEl.style.display = 'none';
+        if (buffer.length > 0) {
+            const welcome = this.getActivePanel().querySelector('.welcome-message');
+            if (welcome) welcome.style.display = 'none';
         }
         for (const item of buffer) {
             if (item && item.message) {
@@ -1207,9 +1206,10 @@ class ChatUI {
         if (!text || this.isProcessing) return;
         this.lastResultRendered = false;
 
-        // Hide welcome
-        if (this.welcomeEl) {
-            this.welcomeEl.style.display = 'none';
+        // Hide welcome message in active panel
+        const welcome = this.getActivePanel().querySelector('.welcome-message');
+        if (welcome) {
+            welcome.style.display = 'none';
         }
 
         // Show user message
@@ -1559,8 +1559,7 @@ class ChatUI {
 
     scrollToBottom() {
         requestAnimationFrame(() => {
-            const panel = this.getActivePanel();
-            panel.scrollTop = panel.scrollHeight;
+            this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
         });
     }
 
@@ -1614,7 +1613,7 @@ class ChatUI {
 
             const pre = document.createElement('pre');
 
-            if (lang || true) {
+            {
                 const headerDiv = document.createElement('div');
                 headerDiv.className = 'code-block-header';
 
@@ -1818,19 +1817,6 @@ class ChatUI {
                 parent.appendChild(document.createTextNode(m[6]));
             }
         }
-    }
-
-    // Keep old renderMarkdown for backwards compatibility
-    renderMarkdown(text) {
-        let html = this.escapeHtml(text);
-        html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-            return `<pre><code>${code}</code></pre>`;
-        });
-        html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-        html = html.replace(/\*\*([^\n]+?)\*\*/g, '<strong>$1</strong>');
-        html = html.replace(/(?<!\*)\*(?!\*)([^\n]+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
-        html = html.replace(/\n/g, '<br>');
-        return html;
     }
 
     escapeHtml(str) {

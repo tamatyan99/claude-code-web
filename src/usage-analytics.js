@@ -394,7 +394,7 @@ class UsageAnalytics extends EventEmitter {
     }
     
     // Calculate P90
-    const p90Index = Math.floor(tokenCounts.length * 0.9);
+    const p90Index = Math.min(Math.ceil(tokenCounts.length * 0.9) - 1, tokenCounts.length - 1);
     this.p90Limit = tokenCounts[p90Index];
     
     this.emit('p90-calculated', {
