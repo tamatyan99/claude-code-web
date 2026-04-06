@@ -132,7 +132,17 @@ class ClaudeCodeWebServer {
   }
 
   setupExpress() {
-    this.app.use(cors());
+    this.app.use(cors({
+      origin: (origin, callback) => {
+        // Allow requests with no origin (same-origin, curl, etc.)
+        if (!origin) return callback(null, true);
+        // Allow localhost and 127.0.0.1 on any port
+        if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+          return callback(null, true);
+        }
+        callback(new Error('CORS: origin not allowed'));
+      }
+    }));
     this.app.use(express.json());
 
     // Delegate all REST API routes to the api module
@@ -222,7 +232,7 @@ class ClaudeCodeWebServer {
     wsInfo.claudeSessionId = sessionId;
 
     // Save sessions after creating new one
-    this.saveSessionsToDisk();
+    await this.saveSessionsToDisk();
 
     this.sendToWebSocket(wsInfo.ws, {
       type: 'session_created',
@@ -447,9 +457,9 @@ class ClaudeCodeWebServer {
     this.webSocketConnections.delete(wsId);
   }
 
-  close() {
+  async close() {
     // Save sessions before closing
-    this.saveSessionsToDisk();
+    await this.saveSessionsToDisk();
 
     // Clear auto-save interval
     if (this.autoSaveInterval) {

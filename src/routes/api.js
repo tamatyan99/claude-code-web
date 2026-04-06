@@ -439,9 +439,14 @@ function registerApiRoutes(server) {
     const validation = server.validatePath(requestedPath);
     if (!validation.valid) return res.status(403).json({ error: 'Access denied' });
 
-    const BLOCKED_EXTS = new Set(['.env', '.key', '.pem', '.p12', '.pfx', '.crt', '.cer']);
+    const BLOCKED_EXTS = new Set(['.env', '.key', '.pem', '.p12', '.pfx', '.crt', '.cer', '.secret', '.passwd']);
+    const basename = path.basename(validation.path).toLowerCase();
     const ext = path.extname(validation.path).toLowerCase();
-    if (BLOCKED_EXTS.has(ext)) return res.status(403).json({ error: 'File type not allowed' });
+    // Block .env variants (.env.local, .env.production, etc.) and known secret files
+    const BLOCKED_NAMES = ['id_rsa', 'id_ed25519', 'id_dsa', '.npmrc', '.pypirc'];
+    if (BLOCKED_EXTS.has(ext) || basename.startsWith('.env') || BLOCKED_NAMES.includes(basename)) {
+      return res.status(403).json({ error: 'File type not allowed' });
+    }
 
     try {
       const stats = fs.statSync(validation.path);
