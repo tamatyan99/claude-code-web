@@ -79,7 +79,8 @@ function registerApiRoutes(server) {
       active: session.active,
       workingDir: session.workingDir,
       connectedClients: session.connections.size,
-      lastActivity: session.lastActivity
+      lastActivity: session.lastActivity,
+      sdkSessionId: server.sdkSession?.getSession(id)?.sdkSessionId || null
     }));
     res.json({ sessions: sessionList });
   });

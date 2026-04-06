@@ -25,6 +25,52 @@
                 <button class="sidebar-new-btn" id="newChatBtn" title="New Chat (Ctrl+N)">+ New</button>
             </div>
             <div class="session-list" id="sessionList"></div>
+            <!-- Usage Panel -->
+            <div class="usage-panel" id="usagePanel">
+                <div class="usage-panel-header" id="usagePanelToggle">
+                    <span>Usage</span>
+                    <span class="usage-panel-chevron" id="usagePanelChevron">&#9660;</span>
+                </div>
+                <div class="usage-panel-body" id="usagePanelBody">
+                    <div class="usage-stat">
+                        <span class="usage-stat-label">Session</span>
+                        <span class="usage-stat-value" id="usageSessionTimer">--:--:--</span>
+                    </div>
+                    <div class="usage-stat">
+                        <span class="usage-stat-label">Remaining</span>
+                        <span class="usage-stat-value" id="usageRemaining">--:--</span>
+                    </div>
+                    <div class="usage-bar-container">
+                        <div class="usage-bar">
+                            <div class="usage-bar-fill usage-bar-input" id="usageBarInput" style="width:0%"></div>
+                            <div class="usage-bar-fill usage-bar-output" id="usageBarOutput" style="width:0%"></div>
+                            <div class="usage-bar-fill usage-bar-cache" id="usageBarCache" style="width:0%"></div>
+                        </div>
+                        <div class="usage-bar-legend">
+                            <span class="usage-legend-item"><span class="usage-dot" style="background:var(--accent)"></span>In</span>
+                            <span class="usage-legend-item"><span class="usage-dot" style="background:var(--success)"></span>Out</span>
+                            <span class="usage-legend-item"><span class="usage-dot" style="background:var(--purple)"></span>Cache</span>
+                        </div>
+                    </div>
+                    <div class="usage-stat">
+                        <span class="usage-stat-label">Tokens</span>
+                        <span class="usage-stat-value" id="usageTokens">0</span>
+                    </div>
+                    <div class="usage-stat">
+                        <span class="usage-stat-label">Cost</span>
+                        <span class="usage-stat-value" id="usageCost">$0.00</span>
+                    </div>
+                    <div class="usage-stat">
+                        <span class="usage-stat-label">Burn Rate</span>
+                        <span class="usage-stat-value" id="usageBurnRate">-- tok/min</span>
+                    </div>
+                    <div class="usage-stat">
+                        <span class="usage-stat-label">Requests</span>
+                        <span class="usage-stat-value" id="usageRequests">0</span>
+                    </div>
+                    <div class="usage-depletion" id="usageDepletion"></div>
+                </div>
+            </div>
         </aside>
 
         <!-- Sidebar overlay for mobile -->
@@ -91,6 +137,21 @@
                     <span id="statusText">Disconnected</span>
                 </div>
             </footer>
+        </div>
+    </div>
+
+    <!-- Folder Picker Modal -->
+    <div class="folder-modal-overlay hidden" id="folderModalOverlay"></div>
+    <div class="folder-modal hidden" id="folderModal">
+        <div class="folder-modal-header">
+            <span class="folder-modal-title">Select Working Directory</span>
+            <button class="folder-modal-close" id="folderModalClose">&times;</button>
+        </div>
+        <div class="folder-breadcrumb" id="folderBreadcrumb"></div>
+        <div class="folder-list" id="folderList"></div>
+        <div class="folder-actions">
+            <button class="folder-cancel-btn" id="folderCancelBtn">Cancel</button>
+            <button class="folder-select-btn" id="folderSelectBtn">Select This Folder</button>
         </div>
     </div>
 

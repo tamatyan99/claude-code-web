@@ -263,6 +263,7 @@ class ClaudeCodeWebServer {
       sessionName: session.name,
       workingDir: session.workingDir,
       active: session.active,
+      sdkSessionId: this.sdkSession?.getSession(claudeSessionId)?.sdkSessionId || null,
       outputBuffer: session.outputBuffer.slice(-200) // Send last 200 lines
     });
 
