@@ -14,6 +14,12 @@ class ChatUI {
         this.pendingResume = null;
         this.usagePollingTimer = null;
         this.folderCurrentPath = null;
+        this.currentWorkingDir = null;
+
+        // Multi-session parallel tabs
+        this.sessionPanels = new Map();
+        this.sessionStates = new Map();
+        this.activeSessionId = null;
 
         this.messagesEl = document.getElementById('chatMessages');
         this.inputEl = document.getElementById('chatInput');
@@ -106,6 +112,26 @@ class ChatUI {
         this.usagePanelToggle.addEventListener('click', () => {
             this.usagePanel.classList.toggle('collapsed');
         });
+
+        // Sidebar tabs
+        document.getElementById('tabSessions')?.addEventListener('click', () => this.switchSidebarTab('sessions'));
+        document.getElementById('tabFiles')?.addEventListener('click', () => { this.switchSidebarTab('files'); this.loadFileTree(); });
+        document.getElementById('tabGit')?.addEventListener('click', () => { this.switchSidebarTab('git'); this.loadGitStatus(); });
+
+        // File browser
+        document.getElementById('fileRefreshBtn')?.addEventListener('click', () => this.loadFileTree());
+
+        // File viewer close
+        document.getElementById('fileViewerClose')?.addEventListener('click', () => this.closeFileViewer());
+        document.getElementById('fileViewerOverlay')?.addEventListener('click', () => this.closeFileViewer());
+
+        // Theme toggle
+        document.getElementById('themeToggle')?.addEventListener('click', () => this.toggleTheme());
+
+        this.applyTheme(localStorage.getItem('ccw_theme') || 'dark');
+        if (typeof mermaid !== 'undefined') {
+            mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
+        }
     }
 
     setupKeyboardShortcuts() {
@@ -146,6 +172,321 @@ class ChatUI {
     closeSidebar() {
         this.sidebar.classList.remove('open');
         this.sidebarOverlay.classList.remove('active');
+    }
+
+    // ── Multi-session Tabs ──
+
+    addSessionTab(sessionId, name) {
+        const panel = document.createElement('div');
+        panel.className = 'session-panel';
+        // Add welcome message
+        const welcome = document.createElement('div');
+        welcome.className = 'welcome-message';
+        const h2 = document.createElement('h2');
+        h2.textContent = 'Claude Code';
+        const p1 = document.createElement('p');
+        p1.textContent = 'Send a message to start a conversation.';
+        const p2 = document.createElement('p');
+        p2.className = 'welcome-hint';
+        p2.textContent = 'Powered by Claude Agent SDK';
+        welcome.appendChild(h2);
+        welcome.appendChild(p1);
+        welcome.appendChild(p2);
+        panel.appendChild(welcome);
+        this.messagesEl.appendChild(panel);
+        this.sessionPanels.set(sessionId, panel);
+        this.sessionStates.set(sessionId, { name, processing: false });
+        this.renderSessionTabs();
+    }
+
+    switchToSession(sessionId) {
+        for (const p of this.sessionPanels.values()) p.classList.remove('active');
+        this.sessionPanels.get(sessionId)?.classList.add('active');
+        this.activeSessionId = sessionId;
+        this.renderSessionTabs();
+    }
+
+    renderSessionTabs() {
+        const tabsEl = document.getElementById('sessionTabs');
+        if (!tabsEl) return;
+        tabsEl.innerHTML = '';
+        if (this.sessionPanels.size === 0) return;
+        for (const [sid, state] of this.sessionStates.entries()) {
+            const tab = document.createElement('button');
+            tab.className = 'session-tab' + (sid === this.activeSessionId ? ' active' : '');
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'session-tab-name';
+            nameSpan.textContent = state.name || 'Chat';
+            tab.appendChild(nameSpan);
+            if (state.processing) {
+                const dot = document.createElement('span');
+                dot.className = 'session-tab-dot';
+                tab.appendChild(dot);
+            }
+            const closeBtn = document.createElement('span');
+            closeBtn.className = 'session-tab-close';
+            closeBtn.textContent = '\u00D7';
+            closeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.closeTab(sid);
+            });
+            tab.appendChild(closeBtn);
+            tab.addEventListener('click', () => {
+                if (sid !== this.activeSessionId) {
+                    this.sessionId = sid;
+                    sessionStorage.setItem('ccw_sessionId', sid);
+                    this.switchToSession(sid);
+                    this.send({ type: 'join_session', sessionId: sid });
+                }
+            });
+            tabsEl.appendChild(tab);
+        }
+        // Add [+] button
+        const addBtn = document.createElement('button');
+        addBtn.className = 'session-tab add-tab';
+        addBtn.textContent = '+';
+        addBtn.addEventListener('click', () => this.createNewChat());
+        tabsEl.appendChild(addBtn);
+    }
+
+    getActivePanel() {
+        return this.sessionPanels.get(this.activeSessionId) || this.messagesEl;
+    }
+
+    closeTab(sessionId) {
+        if (this.sessionPanels.size <= 1) return;
+        if (sessionId === this.activeSessionId) {
+            // Switch to another tab first
+            for (const sid of this.sessionPanels.keys()) {
+                if (sid !== sessionId) {
+                    this.sessionId = sid;
+                    sessionStorage.setItem('ccw_sessionId', sid);
+                    this.switchToSession(sid);
+                    this.send({ type: 'join_session', sessionId: sid });
+                    break;
+                }
+            }
+        }
+        const panel = this.sessionPanels.get(sessionId);
+        if (panel) panel.remove();
+        this.sessionPanels.delete(sessionId);
+        this.sessionStates.delete(sessionId);
+        this.renderSessionTabs();
+    }
+
+    // ── Theme Toggle ──
+
+    toggleTheme() {
+        const current = document.documentElement.dataset.theme || 'dark';
+        const next = current === 'dark' ? 'light' : 'dark';
+        this.applyTheme(next);
+    }
+
+    applyTheme(theme) {
+        document.documentElement.dataset.theme = theme;
+        const btn = document.getElementById('themeToggle');
+        if (btn) btn.textContent = theme === 'dark' ? '\u2600' : '\u263E';
+        localStorage.setItem('ccw_theme', theme);
+        const hljsLink = document.getElementById('hljs-theme');
+        if (hljsLink) {
+            hljsLink.href = theme === 'dark'
+                ? 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css'
+                : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css';
+        }
+    }
+
+    // ── Sidebar Tabs ──
+
+    switchSidebarTab(tab) {
+        const tabs = ['sessions', 'files', 'git'];
+        const tabBtns = { sessions: 'tabSessions', files: 'tabFiles', git: 'tabGit' };
+        const panels = { sessions: 'sessionPanel', files: 'filePanel', git: 'gitPanel' };
+        for (const t of tabs) {
+            const btn = document.getElementById(tabBtns[t]);
+            const panel = document.getElementById(panels[t]);
+            if (btn) btn.classList.toggle('active', t === tab);
+            if (panel) {
+                if (t === tab) {
+                    panel.classList.remove('hidden');
+                    panel.classList.add('active');
+                } else {
+                    panel.classList.remove('active');
+                    panel.classList.add('hidden');
+                }
+            }
+        }
+    }
+
+    // ── File Browser ──
+
+    async loadFileTree() {
+        const container = document.getElementById('fileTree');
+        if (!this.currentWorkingDir) {
+            if (container) container.innerHTML = '<div style="color:var(--text-secondary);padding:12px;">No working directory selected</div>';
+            return;
+        }
+        const pathEl = document.getElementById('fileTreePath');
+        if (pathEl) pathEl.textContent = this.currentWorkingDir;
+        try {
+            const resp = await fetch(`/api/files/tree?path=${encodeURIComponent(this.currentWorkingDir)}`);
+            const data = await resp.json();
+            if (container) {
+                container.innerHTML = '';
+                this.renderFileTree(data.tree || [], container, 0);
+            }
+        } catch (err) {
+            console.error('Failed to load file tree:', err);
+        }
+    }
+
+    renderFileTree(nodes, container, depth) {
+        if (!Array.isArray(nodes)) return;
+        for (const node of nodes) {
+            const item = document.createElement('div');
+            item.className = 'file-tree-item';
+            item.style.paddingLeft = (depth * 16 + 8) + 'px';
+            const icon = document.createElement('span');
+            icon.className = 'file-tree-icon';
+            if (node.type === 'dir') {
+                icon.textContent = '\u25B6';
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = node.name;
+                item.appendChild(icon);
+                item.appendChild(nameSpan);
+                const children = document.createElement('div');
+                children.className = 'file-tree-children';
+                children.style.display = 'none';
+                if (node.children) {
+                    this.renderFileTree(node.children, children, depth + 1);
+                }
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isOpen = children.style.display !== 'none';
+                    children.style.display = isOpen ? 'none' : 'block';
+                    icon.textContent = isOpen ? '\u25B6' : '\u25BC';
+                });
+                container.appendChild(item);
+                container.appendChild(children);
+            } else {
+                icon.textContent = '\u{1F4C4}';
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = node.name;
+                item.appendChild(icon);
+                item.appendChild(nameSpan);
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.openFile(node.path);
+                });
+                container.appendChild(item);
+            }
+        }
+    }
+
+    async openFile(filePath) {
+        try {
+            const resp = await fetch(`/api/files/content?path=${encodeURIComponent(filePath)}`);
+            const data = await resp.json();
+            const modal = document.getElementById('fileViewerModal');
+            const overlay = document.getElementById('fileViewerOverlay');
+            const pathEl = document.getElementById('fileViewerPath');
+            const codeEl = document.getElementById('fileViewerCode');
+            if (pathEl) pathEl.textContent = filePath;
+            if (codeEl) {
+                codeEl.textContent = data.content || '';
+                if (typeof hljs !== 'undefined') {
+                    hljs.highlightElement(codeEl);
+                }
+            }
+            if (modal) modal.classList.remove('hidden');
+            if (overlay) overlay.classList.remove('hidden');
+        } catch (err) {
+            console.error('Failed to open file:', err);
+        }
+    }
+
+    closeFileViewer() {
+        document.getElementById('fileViewerModal')?.classList.add('hidden');
+        document.getElementById('fileViewerOverlay')?.classList.add('hidden');
+    }
+
+    // ── Git Panel ──
+
+    async loadGitStatus() {
+        if (!this.currentWorkingDir) {
+            const content = document.getElementById('gitPanelContent');
+            if (content) content.innerHTML = '<div style="color:var(--text-secondary);padding:12px;">No working directory</div>';
+            return;
+        }
+        try {
+            const resp = await fetch(`/api/git/status?path=${encodeURIComponent(this.currentWorkingDir)}`);
+            const data = await resp.json();
+            this.renderGitStatus(data);
+        } catch (err) {
+            console.error('Failed to load git status:', err);
+        }
+    }
+
+    renderGitStatus(data) {
+        const content = document.getElementById('gitPanelContent');
+        if (!content) return;
+        content.innerHTML = '';
+
+        if (!data.isGitRepo) {
+            const msg = document.createElement('div');
+            msg.style.color = 'var(--text-secondary)';
+            msg.style.padding = '12px';
+            msg.textContent = 'Not a git repository';
+            content.appendChild(msg);
+            return;
+        }
+
+        // Branch name
+        if (data.branch) {
+            const branchEl = document.createElement('div');
+            branchEl.className = 'git-branch';
+            branchEl.textContent = 'Branch: ' + data.branch;
+            content.appendChild(branchEl);
+        }
+
+        // Changed files (parse git status --short string)
+        const statusLines = (data.status || '').split('\n').filter(l => l.trim());
+        if (statusLines.length > 0) {
+            const filesHeader = document.createElement('div');
+            filesHeader.className = 'git-section-title';
+            filesHeader.textContent = 'Changes';
+            content.appendChild(filesHeader);
+            for (const line of statusLines) {
+                const fileEl = document.createElement('div');
+                fileEl.className = 'git-file';
+                const statusChar = line.trim().charAt(0);
+                const colorMap = { M: 'var(--warning)', A: 'var(--success)', D: 'var(--error)' };
+                fileEl.style.color = colorMap[statusChar] || 'var(--text-secondary)';
+                fileEl.textContent = line;
+                content.appendChild(fileEl);
+            }
+        }
+
+        // Last 5 commits (parse git log --oneline string)
+        const logLines = (data.log || '').split('\n').filter(l => l.trim());
+        if (logLines.length > 0) {
+            const commitsHeader = document.createElement('div');
+            commitsHeader.className = 'git-section-title';
+            commitsHeader.textContent = 'Recent Commits';
+            content.appendChild(commitsHeader);
+            for (const line of logLines.slice(0, 5)) {
+                const commitEl = document.createElement('div');
+                commitEl.className = 'git-log-entry';
+                commitEl.textContent = line;
+                content.appendChild(commitEl);
+            }
+        }
+
+        // Refresh button
+        const refreshBtn = document.createElement('button');
+        refreshBtn.className = 'git-refresh-btn';
+        refreshBtn.textContent = 'Refresh';
+        refreshBtn.addEventListener('click', () => this.loadGitStatus());
+        content.appendChild(refreshBtn);
     }
 
     // ── Folder Picker ──
@@ -406,6 +747,37 @@ class ChatUI {
             name.className = 'session-item-name';
             name.textContent = s.name || 'Unnamed Session';
 
+            // Inline editing on double-click
+            name.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                const input = document.createElement('input');
+                input.className = 'session-item-name-input';
+                input.value = s.name || 'Unnamed Session';
+                name.replaceWith(input);
+                input.focus();
+                const finishEdit = async (save) => {
+                    if (save) {
+                        try {
+                            await fetch(`/api/sessions/${s.id}`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ name: input.value })
+                            });
+                        } catch (err) {
+                            console.error('Failed to rename session:', err);
+                        }
+                        this.loadSessionList();
+                    } else {
+                        input.replaceWith(name);
+                    }
+                };
+                input.addEventListener('blur', () => finishEdit(true));
+                input.addEventListener('keydown', (ke) => {
+                    if (ke.key === 'Enter') { ke.preventDefault(); input.blur(); }
+                    if (ke.key === 'Escape') { ke.preventDefault(); finishEdit(false); }
+                });
+            });
+
             const time = document.createElement('div');
             time.className = 'session-item-time';
             time.textContent = this.relativeTime(s.lastActivity || s.created);
@@ -466,8 +838,6 @@ class ChatUI {
     }
 
     createNewChat() {
-        // Clear messages
-        this.clearMessages();
         this.totalCost = 0;
         this.costDisplay.textContent = '$0.00';
         this.send({
@@ -478,11 +848,17 @@ class ChatUI {
     }
 
     switchSession(sessionId) {
-        this.clearMessages();
         this.totalCost = 0;
         this.costDisplay.textContent = '$0.00';
         this.sessionId = sessionId;
         sessionStorage.setItem('ccw_sessionId', sessionId);
+        // Use tab switching if we have a panel, otherwise create one
+        if (this.sessionPanels.has(sessionId)) {
+            this.switchToSession(sessionId);
+        } else {
+            this.addSessionTab(sessionId, 'Session');
+            this.switchToSession(sessionId);
+        }
         this.send({ type: 'join_session', sessionId });
     }
 
@@ -499,11 +875,23 @@ class ChatUI {
     }
 
     clearMessages() {
-        this.messagesEl.innerHTML = '';
-        if (this.welcomeEl) {
-            this.messagesEl.appendChild(this.welcomeEl);
-            this.welcomeEl.style.display = '';
-        }
+        const panel = this.getActivePanel();
+        if (!panel) return;
+        panel.innerHTML = '';
+        // Re-add welcome
+        const welcome = document.createElement('div');
+        welcome.className = 'welcome-message';
+        const h2 = document.createElement('h2');
+        h2.textContent = 'Claude Code';
+        const p1 = document.createElement('p');
+        p1.textContent = 'Send a message to start a conversation.';
+        const p2 = document.createElement('p');
+        p2.className = 'welcome-hint';
+        p2.textContent = 'Powered by Claude Agent SDK';
+        welcome.appendChild(h2);
+        welcome.appendChild(p1);
+        welcome.appendChild(p2);
+        panel.appendChild(welcome);
     }
 
     // ── Connection ──
@@ -579,6 +967,9 @@ class ChatUI {
             case 'session_created':
                 this.sessionId = msg.sessionId;
                 sessionStorage.setItem('ccw_sessionId', this.sessionId);
+                // Add a tab for this new session
+                this.addSessionTab(this.sessionId, `Chat ${new Date().toLocaleString()}`);
+                this.switchToSession(this.sessionId);
                 // Join and start SDK session
                 this.send({ type: 'join_session', sessionId: this.sessionId });
                 this.loadSessionList();
@@ -589,6 +980,19 @@ class ChatUI {
                 if (msg.workingDir) {
                     this.workingDirEl.textContent = this.shortenPath(msg.workingDir);
                     this.workingDirEl.title = msg.workingDir;
+                }
+
+                // Track working dir for file browser and git
+                if (msg.workingDir) {
+                    this.currentWorkingDir = msg.workingDir;
+                }
+
+                // Also add tab if we don't have one for this session yet (reconnect case)
+                if (this.sessionId && !this.sessionPanels.has(this.sessionId)) {
+                    this.addSessionTab(this.sessionId, 'Session');
+                    this.switchToSession(this.sessionId);
+                } else if (this.sessionId) {
+                    this.switchToSession(this.sessionId);
                 }
 
                 // Store sdkSessionId if available
@@ -633,6 +1037,11 @@ class ChatUI {
                 this.setStatus('processing', 'Thinking...');
                 this.setProcessing(true);
                 this.showTypingIndicator();
+                // Update tab indicator
+                if (this.sessionStates.has(this.sessionId)) {
+                    this.sessionStates.get(this.sessionId).processing = true;
+                }
+                this.renderSessionTabs();
                 break;
 
             case 'sdk_message':
@@ -644,6 +1053,11 @@ class ChatUI {
                 this.setProcessing(false);
                 this.removeTypingIndicator();
                 this.requestUsageUpdate();
+                // Update tab indicator
+                if (this.sessionStates.has(this.sessionId)) {
+                    this.sessionStates.get(this.sessionId).processing = false;
+                }
+                this.renderSessionTabs();
                 break;
 
             case 'sdk_error':
@@ -762,7 +1176,7 @@ class ChatUI {
                 }
                 if (msg.result && !this.lastResultRendered) {
                     this.lastResultRendered = true;
-                    const allAssistant = this.messagesEl.querySelectorAll('.msg-assistant');
+                    const allAssistant = this.getActivePanel().querySelectorAll('.msg-assistant');
                     const lastAssistantMsg = allAssistant.length > 0 ? allAssistant[allAssistant.length - 1] : null;
                     const lastContent = lastAssistantMsg ? lastAssistantMsg.querySelector('.msg-content') : null;
                     if (!lastContent || !lastContent.textContent.includes(msg.result.substring(0, 50))) {
@@ -835,7 +1249,7 @@ class ChatUI {
         el.appendChild(role);
         el.appendChild(content);
         el.appendChild(actions);
-        this.messagesEl.appendChild(el);
+        this.getActivePanel().appendChild(el);
         this.scrollToBottom();
     }
 
@@ -858,7 +1272,7 @@ class ChatUI {
         el.appendChild(role);
         el.appendChild(content);
         el.appendChild(actions);
-        this.messagesEl.appendChild(el);
+        this.getActivePanel().appendChild(el);
         this.scrollToBottom();
     }
 
@@ -966,7 +1380,7 @@ class ChatUI {
 
         card.appendChild(header);
         card.appendChild(body);
-        this.messagesEl.appendChild(card);
+        this.getActivePanel().appendChild(card);
         this.scrollToBottom();
     }
 
@@ -1033,8 +1447,8 @@ class ChatUI {
         }
 
         const escapedId = CSS.escape(toolUseId);
-        const card = this.messagesEl.querySelector(`.tool-card[data-tool-id="${escapedId}"]`)
-            || this.messagesEl.querySelector('.tool-card:last-child');
+        const card = this.getActivePanel().querySelector(`.tool-card[data-tool-id="${escapedId}"]`)
+            || this.getActivePanel().querySelector('.tool-card:last-child');
         if (card) {
             const body = card.querySelector('.tool-card-body');
             if (body) {
@@ -1084,7 +1498,7 @@ class ChatUI {
             if (p.cls) span.className = p.cls;
             el.appendChild(span);
         }
-        this.messagesEl.appendChild(el);
+        this.getActivePanel().appendChild(el);
         this.scrollToBottom();
     }
 
@@ -1096,24 +1510,24 @@ class ChatUI {
         span.style.color = 'var(--error)';
         span.textContent = text;
         el.appendChild(span);
-        this.messagesEl.appendChild(el);
+        this.getActivePanel().appendChild(el);
         this.scrollToBottom();
     }
 
     showTypingIndicator() {
-        if (document.getElementById('typingIndicator')) return;
+        if (this.getActivePanel().querySelector('#typingIndicator')) return;
         const el = document.createElement('div');
         el.className = 'typing-indicator';
         el.id = 'typingIndicator';
         for (let i = 0; i < 3; i++) {
             el.appendChild(document.createElement('span'));
         }
-        this.messagesEl.appendChild(el);
+        this.getActivePanel().appendChild(el);
         this.scrollToBottom();
     }
 
     removeTypingIndicator() {
-        const el = document.getElementById('typingIndicator');
+        const el = this.getActivePanel().querySelector('.typing-indicator');
         if (el) el.remove();
     }
 
@@ -1139,13 +1553,14 @@ class ChatUI {
         });
         el.appendChild(retryBtn);
 
-        this.messagesEl.appendChild(el);
+        this.getActivePanel().appendChild(el);
         this.scrollToBottom();
     }
 
     scrollToBottom() {
         requestAnimationFrame(() => {
-            this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+            const panel = this.getActivePanel();
+            panel.scrollTop = panel.scrollHeight;
         });
     }
 
@@ -1178,6 +1593,24 @@ class ChatUI {
             // Create code block with header (lang label + copy button)
             const lang = match[1] || '';
             const codeText = match[2];
+
+            if (lang === 'mermaid') {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'mermaid-diagram';
+                if (typeof mermaid !== 'undefined') {
+                    const id = 'mermaid-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+                    mermaid.render(id, codeText).then(({ svg }) => {
+                        wrapper.innerHTML = svg;
+                    }).catch(() => {
+                        wrapper.textContent = codeText;
+                    });
+                } else {
+                    wrapper.textContent = codeText;
+                }
+                fragment.appendChild(wrapper);
+                lastIndex = match.index + match[0].length;
+                continue; // skip normal pre/code creation
+            }
 
             const pre = document.createElement('pre');
 

@@ -1022,3 +1022,413 @@ html, body {
     .header-title { font-size: 14px; }
     .msg-actions { opacity: 1; } /* Always show on mobile since no hover */
 }
+
+/* ── Light Theme ── */
+[data-theme="light"] {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f6f8fa;
+    --bg-tertiary: #eaeef2;
+    --bg-message-user: #f0f4f8;
+    --bg-message-assistant: #f6f8fa;
+    --text-primary: #1f2328;
+    --text-secondary: #656d76;
+    --accent: #0969da;
+    --accent-hover: #0860ca;
+    --success: #1a7f37;
+    --error: #cf222e;
+    --warning: #9a6700;
+    --purple: #8250df;
+    --border: #d0d7de;
+}
+[data-theme="light"] .msg-content pre code.hljs {
+    background: #f6f8fa;
+}
+[data-theme="light"] .diff-line-removed {
+    background: rgba(255, 129, 130, 0.2);
+    color: #b91c1c;
+}
+[data-theme="light"] .diff-line-added {
+    background: rgba(40, 167, 69, 0.15);
+    color: #166534;
+}
+
+/* ── Theme Toggle Button ── */
+.theme-toggle-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1;
+    transition: color 0.15s, background 0.15s;
+}
+.theme-toggle-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+}
+
+/* ── Session Tabs Bar ── */
+.session-tabs {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 8px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    flex-shrink: 0;
+    min-height: 36px;
+}
+.session-tabs:empty { display: none; }
+
+.session-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    border: none;
+    background: none;
+    font-family: var(--font-sans);
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+    transition: background 0.1s, color 0.1s;
+}
+.session-tab:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.session-tab.active { background: var(--bg-primary); color: var(--text-primary); }
+
+.tab-indicator {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+    display: none;
+    animation: pulse 1.2s infinite;
+}
+.session-tab.processing .tab-indicator { display: block; }
+
+.tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
+
+.tab-close {
+    opacity: 0;
+    font-size: 14px;
+    line-height: 1;
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    margin-left: 2px;
+}
+.session-tab:hover .tab-close { opacity: 0.7; }
+.tab-close:hover { opacity: 1 !important; color: var(--error) !important; }
+
+.session-tab-add {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    flex-shrink: 0;
+    transition: background 0.1s, color 0.1s;
+}
+.session-tab-add:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+
+/* ── Session Panels (inside #chatMessages) ── */
+.chat-messages {
+    position: relative;
+    overflow: hidden;
+}
+
+.session-panel {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    position: absolute;
+    inset: 0;
+}
+.session-panel.active { display: flex; }
+
+.session-panel .welcome-message {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-secondary);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ── Sidebar Tabs ── */
+.sidebar-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+.sidebar-tab {
+    flex: 1;
+    padding: 8px 4px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+.sidebar-tab:hover { color: var(--text-primary); }
+.sidebar-tab.active {
+    color: var(--text-primary);
+    border-bottom-color: var(--accent);
+}
+
+.sidebar-panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+.sidebar-panel.active { display: flex; }
+.sidebar-panel.hidden { display: none !important; }
+
+/* ── File Tree ── */
+.file-tree-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+.file-tree-path {
+    font-size: 10px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.file-refresh-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.file-refresh-btn:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+
+.file-tree {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+    font-size: 12px;
+}
+
+.file-tree-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-primary);
+    transition: background 0.1s;
+}
+.file-tree-item:hover { background: var(--bg-tertiary); }
+
+.file-tree-icon { font-size: 12px; flex-shrink: 0; }
+.file-tree-name { overflow: hidden; text-overflow: ellipsis; }
+.file-tree-children { /* children are hidden/shown via JS */ }
+
+.file-tree-item.dir { color: var(--text-primary); font-weight: 500; }
+.file-tree-item.file { color: var(--text-secondary); }
+
+/* ── Git Panel ── */
+.git-panel-content {
+    padding: 10px;
+    font-size: 12px;
+    overflow-y: auto;
+    flex: 1;
+}
+.git-loading { color: var(--text-secondary); padding: 8px; }
+.git-not-repo { color: var(--text-secondary); padding: 8px; font-style: italic; }
+
+.git-branch {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    background: var(--bg-tertiary);
+    border-radius: 6px;
+    margin-bottom: 10px;
+    font-weight: 500;
+}
+.git-branch-icon { color: var(--purple); }
+
+.git-section-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    margin: 8px 0 4px;
+}
+
+.git-file {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+.git-status-M { color: var(--warning); }
+.git-status-A { color: var(--success); }
+.git-status-D { color: var(--error); }
+.git-status-Q { color: var(--text-secondary); }
+
+.git-log-entry {
+    padding: 2px 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.git-log-hash { color: var(--accent); margin-right: 4px; }
+
+.git-refresh-btn {
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+    padding: 6px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    text-align: center;
+}
+.git-refresh-btn:hover { color: var(--text-primary); background: var(--bg-primary); }
+
+/* ── File Viewer Modal ── */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 200;
+}
+
+.file-viewer-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 85vw;
+    max-width: 1000px;
+    height: 75vh;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    z-index: 201;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    gap: 12px;
+}
+
+.file-viewer-path {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.modal-close-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+.modal-close-btn:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+
+.file-viewer-content {
+    flex: 1;
+    overflow: auto;
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.5;
+}
+.file-viewer-content code {
+    display: block;
+    padding: 16px;
+    min-height: 100%;
+    background: var(--bg-primary);
+}
+.file-viewer-content code.hljs {
+    background: var(--bg-primary);
+}
+
+/* ── Session Name Inline Edit ── */
+.session-item-name-input {
+    background: var(--bg-primary);
+    border: 1px solid var(--accent);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: var(--font-sans);
+    padding: 1px 4px;
+    border-radius: 3px;
+    outline: none;
+    width: 100%;
+}
+
+/* ── Mermaid Diagrams ── */
+.mermaid-diagram {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    margin: 8px 0;
+    text-align: center;
+    overflow-x: auto;
+}
+.mermaid-diagram svg { max-width: 100%; }
+
+/* Update responsive styles to account for session panels */
+@media (max-width: 768px) {
+    .session-panel { position: absolute; inset: 0; }
+}
