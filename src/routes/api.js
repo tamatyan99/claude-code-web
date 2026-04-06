@@ -390,7 +390,7 @@ function registerApiRoutes(server) {
   app.patch('/api/sessions/:sessionId', (req, res) => {
     const session = server.claudeSessions.get(req.params.sessionId);
     if (!session) return res.status(404).json({ error: 'Session not found' });
-    const name = (req.body.name || '').trim().substring(0, 100);
+    const name = String(req.body.name || '').trim().substring(0, 100);
     if (name) session.name = name;
     server.saveSessionsToDisk();
     res.json({ success: true, name: session.name });
@@ -439,9 +439,14 @@ function registerApiRoutes(server) {
     const validation = server.validatePath(requestedPath);
     if (!validation.valid) return res.status(403).json({ error: 'Access denied' });
 
-    const BLOCKED_EXTS = new Set(['.env', '.key', '.pem', '.p12', '.pfx', '.crt', '.cer']);
+    const BLOCKED_EXTS = new Set(['.env', '.key', '.pem', '.p12', '.pfx', '.crt', '.cer', '.secret', '.passwd']);
+    const basename = path.basename(validation.path).toLowerCase();
     const ext = path.extname(validation.path).toLowerCase();
-    if (BLOCKED_EXTS.has(ext)) return res.status(403).json({ error: 'File type not allowed' });
+    // Block .env variants (.env.local, .env.production, etc.) and known secret files
+    const BLOCKED_NAMES = ['id_rsa', 'id_ed25519', 'id_dsa', '.npmrc', '.pypirc'];
+    if (BLOCKED_EXTS.has(ext) || basename.startsWith('.env') || BLOCKED_NAMES.includes(basename)) {
+      return res.status(403).json({ error: 'File type not allowed' });
+    }
 
     try {
       const stats = fs.statSync(validation.path);
@@ -474,7 +479,7 @@ function registerApiRoutes(server) {
 
     const { execSync } = require('child_process');
     try {
-      const opts = { cwd: validation.path, timeout: 5000 };
+      const opts = { cwd: validation.path, timeout: 5000, stdio: 'pipe' };
       const branch = execSync('git branch --show-current', opts).toString().trim();
       const status = execSync('git status --short', opts).toString().trim();
       const log = execSync('git log --oneline -5', opts).toString().trim();

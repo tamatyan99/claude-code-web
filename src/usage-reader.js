@@ -334,9 +334,9 @@ class UsageReader {
 
       for (const projectDir of projectDirs) {
         const projectPath = path.join(this.claudeProjectsPath, projectDir);
-        const stat = await fs.stat(projectPath);
-        
-        if (stat.isDirectory()) {
+        const stat = await fs.lstat(projectPath);
+
+        if (stat.isDirectory() && !stat.isSymbolicLink()) {
           const projectFiles = await fs.readdir(projectPath);
           const jsonlFiles = projectFiles.filter(f => f.endsWith('.jsonl'));
           
@@ -345,7 +345,7 @@ class UsageReader {
             const filePath = path.join(projectPath, jsonlFile);
             
             if (onlyRecent) {
-              const fileStat = await fs.stat(filePath);
+              const fileStat = await fs.lstat(filePath);
               const hoursSinceModified = (Date.now() - fileStat.mtime.getTime()) / (1000 * 60 * 60);
               
               // Only include files modified in the last 24 hours

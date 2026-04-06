@@ -54,8 +54,6 @@ class SessionStore {
 
             // Write to a temporary file first, then rename (atomic operation)
             const tempFile = `${this.sessionsFile}.tmp`;
-            // Ensure directory exists before writing temp file
-            await fs.mkdir(this.storageDir, { recursive: true });
             await fs.writeFile(tempFile, JSON.stringify(data, null, 2));
             await fs.rename(tempFile, this.sessionsFile);
             
@@ -84,9 +82,10 @@ class SessionStore {
                 parsed = JSON.parse(data);
             } catch (parseError) {
                 console.error('Sessions file is corrupted, starting fresh:', parseError.message);
-                // Try to backup the corrupted file
+                // Backup corrupted file (keep only latest backup)
                 try {
-                    await fs.rename(this.sessionsFile, `${this.sessionsFile}.corrupted.${Date.now()}`);
+                    const backupPath = `${this.sessionsFile}.corrupted`;
+                    await fs.rename(this.sessionsFile, backupPath);
                 } catch (renameError) {
                     // Ignore rename errors
                 }
@@ -106,7 +105,7 @@ class SessionStore {
                 const daysSinceSave = (now - savedAt) / (1000 * 60 * 60 * 24);
                 
                 if (daysSinceSave > 7) {
-                    console.log('Sessions are too old, starting fresh');
+                    console.log(`Sessions are ${Math.round(daysSinceSave)} days old (saved at ${parsed.savedAt}), discarding`);
                     return new Map();
                 }
             }

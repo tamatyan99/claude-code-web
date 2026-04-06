@@ -129,8 +129,16 @@ class ChatUI {
 
         this.applyTheme(localStorage.getItem('ccw_theme') || 'dark');
         if (typeof mermaid !== 'undefined') {
-            mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
+            mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' });
         }
+
+        // Clean up sidebar overlay state on resize (mobile → desktop transition)
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 768) {
+                this.sidebar.classList.remove('open');
+                this.sidebarOverlay.classList.remove('active');
+            }
+        });
     }
 
     setupKeyboardShortcuts() {
@@ -166,6 +174,8 @@ class ChatUI {
         } else {
             this.sidebar.classList.toggle('collapsed');
         }
+        const isOpen = !this.sidebar.classList.contains('collapsed') || this.sidebar.classList.contains('open');
+        this.sidebarToggle.setAttribute('aria-expanded', String(isOpen));
     }
 
     closeSidebar() {
@@ -1396,35 +1406,49 @@ class ChatUI {
             container.appendChild(fileInfo);
         }
 
-        const oldStr = input.old_string;
-        const newStr = input.new_string;
+        // Handle MultiEdit with edits array
+        const edits = Array.isArray(input.edits) ? input.edits : [input];
 
-        if (oldStr !== undefined && newStr !== undefined) {
-            const diffView = document.createElement('div');
-            diffView.className = 'diff-view';
+        let rendered = false;
+        for (const edit of edits) {
+            const oldStr = edit.old_string;
+            const newStr = edit.new_string;
 
-            if (oldStr) {
-                const oldLines = oldStr.split('\n');
-                for (const line of oldLines) {
-                    const div = document.createElement('div');
-                    div.className = 'diff-line-removed';
-                    div.textContent = '- ' + line;
-                    diffView.appendChild(div);
+            if (oldStr !== undefined && newStr !== undefined) {
+                rendered = true;
+                const diffView = document.createElement('div');
+                diffView.className = 'diff-view';
+
+                if (oldStr) {
+                    for (const line of oldStr.split('\n')) {
+                        const div = document.createElement('div');
+                        div.className = 'diff-line-removed';
+                        div.textContent = '- ' + line;
+                        diffView.appendChild(div);
+                    }
+                }
+
+                if (newStr) {
+                    for (const line of newStr.split('\n')) {
+                        const div = document.createElement('div');
+                        div.className = 'diff-line-added';
+                        div.textContent = '+ ' + line;
+                        diffView.appendChild(div);
+                    }
+                }
+
+                container.appendChild(diffView);
+
+                // Separator between multiple edits
+                if (edits.length > 1) {
+                    const sep = document.createElement('div');
+                    sep.className = 'diff-separator';
+                    container.appendChild(sep);
                 }
             }
+        }
 
-            if (newStr) {
-                const newLines = newStr.split('\n');
-                for (const line of newLines) {
-                    const div = document.createElement('div');
-                    div.className = 'diff-line-added';
-                    div.textContent = '+ ' + line;
-                    diffView.appendChild(div);
-                }
-            }
-
-            container.appendChild(diffView);
-        } else {
+        if (!rendered) {
             // Fallback to JSON
             const pre = document.createElement('pre');
             const code = document.createElement('code');
@@ -1569,6 +1593,7 @@ class ChatUI {
 
     setStatus(state, text) {
         this.statusDot.className = 'status-dot ' + state;
+        this.statusDot.setAttribute('aria-label', `Connection status: ${text}`);
         this.statusText.textContent = text;
     }
 

@@ -142,8 +142,14 @@ async function main() {
       });
     };
 
-    process.on('SIGINT', () => { shutdown(); });
-    process.on('SIGTERM', () => { shutdown(); });
+    let isShuttingDown = false;
+    const safeShutdown = async () => {
+      if (isShuttingDown) return;
+      isShuttingDown = true;
+      await shutdown();
+    };
+    process.on('SIGINT', safeShutdown);
+    process.on('SIGTERM', safeShutdown);
 
   } catch (error) {
     console.error('Error starting server:', error.message);
