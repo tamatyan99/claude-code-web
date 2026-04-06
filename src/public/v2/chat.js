@@ -131,6 +131,14 @@ class ChatUI {
         if (typeof mermaid !== 'undefined') {
             mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' });
         }
+
+        // Clean up sidebar overlay state on resize (mobile → desktop transition)
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 768) {
+                this.sidebar.classList.remove('open');
+                this.sidebarOverlay.classList.remove('active');
+            }
+        });
     }
 
     setupKeyboardShortcuts() {

@@ -69,7 +69,8 @@ class ClaudeCodeWebServer {
     }, 30000);
 
     // Also save on process exit
-    process.on('beforeExit', () => this.saveSessionsToDisk());
+    this._beforeExitHandler = () => this.saveSessionsToDisk();
+    process.on('beforeExit', this._beforeExitHandler);
   }
 
   async saveSessionsToDisk() {
@@ -461,9 +462,12 @@ class ClaudeCodeWebServer {
     // Save sessions before closing
     await this.saveSessionsToDisk();
 
-    // Clear auto-save interval
+    // Clear auto-save interval and beforeExit listener
     if (this.autoSaveInterval) {
       clearInterval(this.autoSaveInterval);
+    }
+    if (this._beforeExitHandler) {
+      process.removeListener('beforeExit', this._beforeExitHandler);
     }
 
     if (this.wss) {
