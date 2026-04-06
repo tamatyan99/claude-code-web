@@ -6,9 +6,8 @@ const urlsToCache = [
   '/app.js',
   '/session-manager.js',
   '/plan-detector.js',
-  '/v2/index.html',
-  '/v2/chat.js',
-  '/v2/chat.css'
+  '/chat.js',
+  '/chat.css'
 ];
 
 // Install event - cache resources

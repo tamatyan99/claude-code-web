@@ -15,19 +15,12 @@ function registerApiRoutes(server) {
     res.sendFile(path.join(__dirname, '..', 'public', 'manifest.json'));
   });
 
-  // Default: v2 Chat UI at /
+  // Chat UI at /
   app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'public', 'v2', 'index.html'));
-  });
-  app.use('/v2', require('express').static(path.join(__dirname, '..', 'public', 'v2')));
-
-  // Legacy terminal UI at /v1
-  app.get('/v1', (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
   });
-  app.use('/v1', require('express').static(path.join(__dirname, '..', 'public')));
 
-  // Static assets from public/ (icons, manifest, service-worker, etc.)
+  // Static assets from public/ (icons, manifest, service-worker, CSS, JS, etc.)
   app.use(require('express').static(path.join(__dirname, '..', 'public')));
 
   // PWA Icon routes - generate icons dynamically

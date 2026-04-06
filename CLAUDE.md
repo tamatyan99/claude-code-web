@@ -82,7 +82,7 @@ npm start -- --https --cert cert.pem --key key.pem
 - Sessions auto-save and can be manually deleted
 - Session IDs persisted in sessionStorage for reconnection
 
-**Chat Client (src/public/v2/)**
+**Chat Client (src/public/)**
 - **chat.js**: WebSocket client, safe DOM-based message rendering, model selection, permission mode toggle, input handling, session persistence, reconnection with retry UI
 - **chat.css**: Dark theme, responsive layout, tool cards, typing indicators
 - **index.html**: Minimal HTML shell with header, message area, input bar
@@ -130,10 +130,9 @@ claude-code-web/
 │   ├── utils/
 │   │   └── session-store.js   # Session persistence to disk
 │   └── public/
-│       ├── v2/                # Chat UI (default at /)
-│       │   ├── index.html
-│       │   ├── chat.js
-│       │   └── chat.css
+│       ├── index.html         # Chat UI HTML
+│       ├── chat.js            # Chat UI client
+│       ├── chat.css           # Chat UI styles
 │       ├── service-worker.js  # PWA support
 │       └── manifest.json      # PWA manifest
 ├── test/                      # Unit tests
