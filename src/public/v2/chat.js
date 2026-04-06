@@ -212,18 +212,16 @@ class ChatUI {
         if (this.sessionPanels.size === 0) return;
         for (const [sid, state] of this.sessionStates.entries()) {
             const tab = document.createElement('button');
-            tab.className = 'session-tab' + (sid === this.activeSessionId ? ' active' : '');
+            tab.className = 'session-tab' + (sid === this.activeSessionId ? ' active' : '') + (state.processing ? ' processing' : '');
             const nameSpan = document.createElement('span');
-            nameSpan.className = 'session-tab-name';
+            nameSpan.className = 'tab-name';
             nameSpan.textContent = state.name || 'Chat';
             tab.appendChild(nameSpan);
-            if (state.processing) {
-                const dot = document.createElement('span');
-                dot.className = 'session-tab-dot';
-                tab.appendChild(dot);
-            }
+            const dot = document.createElement('span');
+            dot.className = 'tab-indicator';
+            tab.appendChild(dot);
             const closeBtn = document.createElement('span');
-            closeBtn.className = 'session-tab-close';
+            closeBtn.className = 'tab-close';
             closeBtn.textContent = '\u00D7';
             closeBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -242,7 +240,7 @@ class ChatUI {
         }
         // Add [+] button
         const addBtn = document.createElement('button');
-        addBtn.className = 'session-tab add-tab';
+        addBtn.className = 'session-tab session-tab-add';
         addBtn.textContent = '+';
         addBtn.addEventListener('click', () => this.createNewChat());
         tabsEl.appendChild(addBtn);
@@ -753,7 +751,9 @@ class ChatUI {
                 input.value = s.name || 'Unnamed Session';
                 name.replaceWith(input);
                 input.focus();
+                let cancelled = false;
                 const finishEdit = async (save) => {
+                    if (cancelled && save) return;
                     if (save) {
                         try {
                             await fetch(`/api/sessions/${s.id}`, {
@@ -766,6 +766,7 @@ class ChatUI {
                         }
                         this.loadSessionList();
                     } else {
+                        cancelled = true;
                         input.replaceWith(name);
                     }
                 };
@@ -1224,9 +1225,10 @@ class ChatUI {
             }
         });
 
-        // Clear input
+        // Clear input and re-focus
         this.inputEl.value = '';
         this.inputEl.style.height = 'auto';
+        this.inputEl.focus();
     }
 
     // ── DOM helpers ──
@@ -1446,11 +1448,12 @@ class ChatUI {
             text = JSON.stringify(content, null, 2);
         }
 
-        const escapedId = CSS.escape(toolUseId);
-        const card = this.getActivePanel().querySelector(`.tool-card[data-tool-id="${escapedId}"]`)
-            || this.getActivePanel().querySelector('.tool-card:last-child');
-        if (card) {
-            const body = card.querySelector('.tool-card-body');
+        const card = toolUseId
+            ? this.getActivePanel().querySelector(`.tool-card[data-tool-id="${CSS.escape(toolUseId)}"]`)
+            : null;
+        const targetCard = card || this.getActivePanel().querySelector('.tool-card:last-child');
+        if (targetCard) {
+            const body = targetCard.querySelector('.tool-card-body');
             if (body) {
                 const separator = document.createElement('div');
                 separator.className = 'diff-separator';
@@ -1559,7 +1562,8 @@ class ChatUI {
 
     scrollToBottom() {
         requestAnimationFrame(() => {
-            this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+            const panel = this.getActivePanel();
+            panel.scrollTop = panel.scrollHeight;
         });
     }
 
