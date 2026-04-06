@@ -342,10 +342,13 @@ class ClaudeCodeWebServer {
         permissionMode: options.dangerouslySkipPermissions ? 'bypassPermissions' : 'default',
         onMessage: (msg) => {
           session.lastActivity = new Date();
-          this.broadcastToSession(sessionId, {
-            type: 'sdk_message',
-            message: msg,
-          });
+          // Save SDK messages to outputBuffer for session replay
+          const sdkMsg = { type: 'sdk_message', message: msg };
+          session.outputBuffer.push(sdkMsg);
+          if (session.outputBuffer.length > session.maxBufferSize) {
+            session.outputBuffer = session.outputBuffer.slice(-session.maxBufferSize);
+          }
+          this.broadcastToSession(sessionId, sdkMsg);
         },
         onEnd: (code, signal) => {
           // Don't mark session inactive - it's still available for next prompt
