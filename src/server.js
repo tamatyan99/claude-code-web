@@ -274,7 +274,7 @@ class ClaudeCodeWebServer {
       sessionName: session.name,
       workingDir: session.workingDir,
       active: session.active,
-      sdkSessionId: this.sdkSession?.getSession(claudeSessionId)?.sdkSessionId || null,
+      sdkSessionId: this.sdkSession?.getSession(claudeSessionId)?.sdkSessionId || session.sdkSessionId || null,
       outputBuffer: session.outputBuffer.slice(-200) // Send last 200 lines
     });
 
@@ -321,6 +321,10 @@ class ClaudeCodeWebServer {
       session.active = true;
       session.agent = 'sdk';
       session.lastActivity = new Date();
+      // Persist resumeSessionId onto claudeSessions so it's saved to disk
+      if (options.resumeSessionId) {
+        session.sdkSessionId = options.resumeSessionId;
+      }
 
       this.broadcastToSession(sessionId, {
         type: 'sdk_started',
@@ -354,6 +358,10 @@ class ClaudeCodeWebServer {
         permissionMode: options.dangerouslySkipPermissions ? 'bypassPermissions' : 'default',
         onMessage: (msg) => {
           session.lastActivity = new Date();
+          // Persist the SDK session ID onto the claudeSessions entry so it survives restarts
+          if (msg.type === 'system' && msg.session_id) {
+            session.sdkSessionId = msg.session_id;
+          }
           // Save SDK messages to outputBuffer for session replay
           const sdkMsg = { type: 'sdk_message', message: msg };
           session.outputBuffer.push(sdkMsg);

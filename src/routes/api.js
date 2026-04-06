@@ -80,7 +80,7 @@ function registerApiRoutes(server) {
       workingDir: session.workingDir,
       connectedClients: session.connections.size,
       lastActivity: session.lastActivity,
-      sdkSessionId: server.sdkSession?.getSession(id)?.sdkSessionId || null
+      sdkSessionId: server.sdkSession?.getSession(id)?.sdkSessionId || session.sdkSessionId || null
     }));
     res.json({ sessions: sessionList });
   });

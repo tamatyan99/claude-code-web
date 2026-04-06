@@ -34,6 +34,8 @@ class SessionStore {
                 outputBuffer: Array.isArray(session.outputBuffer) ? session.outputBuffer.slice(-100) : [], // Keep last 100 lines
                 connections: [], // Clear connections (they won't persist)
                 lastAccessed: session.lastAccessed || Date.now(),
+                // Claude internal session ID for resume support
+                sdkSessionId: session.sdkSessionId || null,
                 // Session-specific usage tracking
                 sessionStartTime: session.sessionStartTime || null,
                 sessionUsage: session.sessionUsage || {
