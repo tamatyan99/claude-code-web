@@ -166,9 +166,9 @@ describe('UsageAnalytics', function() {
     it('should calculate P90 from session token data', function() {
       const sessions = Array.from({ length: 10 }, (_, i) => ({ totalTokens: (i + 1) * 1000 }));
       const result = analytics.calculateP90Limit(sessions);
-      // P90 of [1000..10000] sorted: index floor(10*0.9)=9 => 10000
-      assert.strictEqual(result, 10000);
-      assert.strictEqual(analytics.p90Limit, 10000);
+      // P90 of [1000..10000] sorted: index ceil(10*0.9)-1=8 => 9000
+      assert.strictEqual(result, 9000);
+      assert.strictEqual(analytics.p90Limit, 9000);
     });
   });
 
