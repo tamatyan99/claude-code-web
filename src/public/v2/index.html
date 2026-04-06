@@ -12,8 +12,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- highlight.js for syntax highlighting -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-theme">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- Mermaid for diagram rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <link rel="stylesheet" href="/v2/chat.css">
 </head>
 <body>
@@ -21,10 +23,29 @@
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <span class="sidebar-title">Sessions</span>
+                <span class="sidebar-title">Claude Code</span>
                 <button class="sidebar-new-btn" id="newChatBtn" title="New Chat (Ctrl+N)">+ New</button>
             </div>
-            <div class="session-list" id="sessionList"></div>
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" id="tabSessions" data-tab="sessions">Sessions</button>
+                <button class="sidebar-tab" id="tabFiles" data-tab="files">Files</button>
+                <button class="sidebar-tab" id="tabGit" data-tab="git">Git</button>
+            </div>
+            <div id="sessionPanel" class="sidebar-panel active">
+                <div class="session-list" id="sessionList"></div>
+            </div>
+            <div id="filePanel" class="sidebar-panel hidden">
+                <div class="file-tree-toolbar">
+                    <span class="file-tree-path" id="fileTreePath"></span>
+                    <button class="file-refresh-btn" id="fileRefreshBtn" title="Refresh">↻</button>
+                </div>
+                <div class="file-tree" id="fileTree"></div>
+            </div>
+            <div id="gitPanel" class="sidebar-panel hidden">
+                <div class="git-panel-content" id="gitPanelContent">
+                    <div class="git-loading">Loading git status...</div>
+                </div>
+            </div>
             <!-- Usage Panel -->
             <div class="usage-panel" id="usagePanel">
                 <div class="usage-panel-header" id="usagePanelToggle">
@@ -103,17 +124,17 @@
                         <option value="safe">Safe Mode</option>
                         <option value="bypass">Bypass Permissions</option>
                     </select>
+                    <button class="theme-toggle-btn" id="themeToggle" title="Toggle light/dark theme">☀</button>
                     <span class="status-dot" id="statusDot" title="Disconnected"></span>
                 </div>
             </header>
 
+            <!-- Session tabs bar -->
+            <nav class="session-tabs" id="sessionTabs"></nav>
+
             <!-- Messages -->
             <main class="chat-messages" id="chatMessages">
-                <div class="welcome-message" id="welcomeMessage">
-                    <h2>Claude Code</h2>
-                    <p>Send a message to start a conversation.</p>
-                    <p class="welcome-hint">Powered by Claude Agent SDK</p>
-                </div>
+                <!-- Session panels are dynamically added here by chat.js -->
             </main>
 
             <!-- Input -->
@@ -153,6 +174,16 @@
             <button class="folder-cancel-btn" id="folderCancelBtn">Cancel</button>
             <button class="folder-select-btn" id="folderSelectBtn">Select This Folder</button>
         </div>
+    </div>
+
+    <!-- File Viewer Modal -->
+    <div class="modal-overlay hidden" id="fileViewerOverlay"></div>
+    <div class="modal file-viewer-modal hidden" id="fileViewerModal">
+        <div class="modal-header">
+            <code class="file-viewer-path" id="fileViewerPath"></code>
+            <button class="modal-close-btn" id="fileViewerClose">&times;</button>
+        </div>
+        <pre class="file-viewer-content" id="fileViewerContent"><code id="fileViewerCode"></code></pre>
     </div>
 
     <script src="/v2/chat.js"></script>
