@@ -10,6 +10,10 @@ class ChatUI {
         this.lastResultRendered = false;
         this.messageIdCounter = 0;
         this.sidebarOpen = true;
+        this.currentSdkSessionId = null;
+        this.pendingResume = null;
+        this.usagePollingTimer = null;
+        this.folderCurrentPath = null;
 
         this.messagesEl = document.getElementById('chatMessages');
         this.inputEl = document.getElementById('chatInput');
@@ -27,6 +31,19 @@ class ChatUI {
         this.sidebarOverlay = document.getElementById('sidebarOverlay');
         this.sessionListEl = document.getElementById('sessionList');
         this.newChatBtn = document.getElementById('newChatBtn');
+
+        // Folder modal elements
+        this.folderModal = document.getElementById('folderModal');
+        this.folderModalOverlay = document.getElementById('folderModalOverlay');
+        this.folderBreadcrumb = document.getElementById('folderBreadcrumb');
+        this.folderList = document.getElementById('folderList');
+        this.folderSelectBtn = document.getElementById('folderSelectBtn');
+        this.folderCancelBtn = document.getElementById('folderCancelBtn');
+        this.folderModalClose = document.getElementById('folderModalClose');
+
+        // Usage panel elements
+        this.usagePanel = document.getElementById('usagePanel');
+        this.usagePanelToggle = document.getElementById('usagePanelToggle');
 
         this.setupEvents();
         this.setupKeyboardShortcuts();
@@ -75,6 +92,20 @@ class ChatUI {
 
         // New chat button
         this.newChatBtn.addEventListener('click', () => this.createNewChat());
+
+        // Working directory click → folder picker
+        this.workingDirEl.addEventListener('click', () => this.openFolderPicker());
+
+        // Folder modal
+        this.folderModalOverlay.addEventListener('click', () => this.closeFolderPicker());
+        this.folderModalClose.addEventListener('click', () => this.closeFolderPicker());
+        this.folderCancelBtn.addEventListener('click', () => this.closeFolderPicker());
+        this.folderSelectBtn.addEventListener('click', () => this.selectFolder());
+
+        // Usage panel toggle
+        this.usagePanelToggle.addEventListener('click', () => {
+            this.usagePanel.classList.toggle('collapsed');
+        });
     }
 
     setupKeyboardShortcuts() {
@@ -117,6 +148,237 @@ class ChatUI {
         this.sidebarOverlay.classList.remove('active');
     }
 
+    // ── Folder Picker ──
+
+    async openFolderPicker() {
+        try {
+            const resp = await fetch('/api/config');
+            const config = await resp.json();
+            const startPath = config.selectedWorkingDir || config.baseFolder || '/';
+            await this.loadFolders(startPath);
+            this.folderModal.classList.remove('hidden');
+            this.folderModalOverlay.classList.remove('hidden');
+        } catch (err) {
+            console.error('Failed to open folder picker:', err);
+        }
+    }
+
+    async loadFolders(path) {
+        try {
+            const resp = await fetch(`/api/folders?path=${encodeURIComponent(path)}`);
+            const data = await resp.json();
+            this.folderCurrentPath = data.currentPath || path;
+            this.renderBreadcrumb(this.folderCurrentPath);
+            this.renderFolderList(data);
+        } catch (err) {
+            console.error('Failed to load folders:', err);
+        }
+    }
+
+    renderBreadcrumb(path) {
+        this.folderBreadcrumb.innerHTML = '';
+        const parts = path.split('/').filter(Boolean);
+        let accumulated = '';
+
+        // Root
+        const rootSpan = document.createElement('span');
+        rootSpan.className = 'folder-breadcrumb-item';
+        rootSpan.textContent = '/';
+        rootSpan.addEventListener('click', () => this.loadFolders('/'));
+        this.folderBreadcrumb.appendChild(rootSpan);
+
+        for (const part of parts) {
+            accumulated += '/' + part;
+            const sep = document.createElement('span');
+            sep.className = 'folder-breadcrumb-sep';
+            sep.textContent = '/';
+            this.folderBreadcrumb.appendChild(sep);
+
+            const span = document.createElement('span');
+            span.className = 'folder-breadcrumb-item';
+            span.textContent = part;
+            const target = accumulated;
+            span.addEventListener('click', () => this.loadFolders(target));
+            this.folderBreadcrumb.appendChild(span);
+        }
+    }
+
+    renderFolderList(data) {
+        this.folderList.innerHTML = '';
+
+        // Parent directory
+        if (data.parentPath) {
+            const parentItem = document.createElement('div');
+            parentItem.className = 'folder-item parent-dir';
+
+            const icon = document.createElement('span');
+            icon.className = 'folder-item-icon';
+            icon.textContent = '\u2B06';
+
+            const name = document.createElement('span');
+            name.className = 'folder-item-name';
+            name.textContent = '.. (parent)';
+
+            parentItem.appendChild(icon);
+            parentItem.appendChild(name);
+            parentItem.addEventListener('click', () => this.loadFolders(data.parentPath));
+            this.folderList.appendChild(parentItem);
+        }
+
+        // Folders
+        const folders = data.folders || [];
+        for (const folder of folders) {
+            const item = document.createElement('div');
+            item.className = 'folder-item';
+
+            const icon = document.createElement('span');
+            icon.className = 'folder-item-icon';
+            icon.textContent = '\u{1F4C1}';
+
+            const name = document.createElement('span');
+            name.className = 'folder-item-name';
+            name.textContent = folder.name;
+
+            item.appendChild(icon);
+            item.appendChild(name);
+            item.addEventListener('click', () => this.loadFolders(folder.path));
+            this.folderList.appendChild(item);
+        }
+
+        if (folders.length === 0 && !data.parentPath) {
+            const empty = document.createElement('div');
+            empty.className = 'folder-item';
+            empty.style.color = 'var(--text-secondary)';
+            empty.textContent = 'No subdirectories';
+            this.folderList.appendChild(empty);
+        }
+    }
+
+    async selectFolder() {
+        if (!this.folderCurrentPath) return;
+        try {
+            await fetch('/api/set-working-dir', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: this.folderCurrentPath })
+            });
+            this.closeFolderPicker();
+            // Create new session with new working dir
+            this.clearMessages();
+            this.totalCost = 0;
+            this.costDisplay.textContent = '$0.00';
+            this.send({
+                type: 'create_session',
+                name: `Chat ${new Date().toLocaleString()}`,
+                workingDir: this.folderCurrentPath
+            });
+        } catch (err) {
+            console.error('Failed to set working directory:', err);
+        }
+    }
+
+    closeFolderPicker() {
+        this.folderModal.classList.add('hidden');
+        this.folderModalOverlay.classList.add('hidden');
+    }
+
+    // ── Usage Dashboard ──
+
+    requestUsageUpdate() {
+        this.send({ type: 'get_usage' });
+    }
+
+    startUsagePolling() {
+        this.stopUsagePolling();
+        this.requestUsageUpdate();
+        this.usagePollingTimer = setInterval(() => this.requestUsageUpdate(), 30000);
+    }
+
+    stopUsagePolling() {
+        if (this.usagePollingTimer) {
+            clearInterval(this.usagePollingTimer);
+            this.usagePollingTimer = null;
+        }
+    }
+
+    handleUsageUpdate(msg) {
+        // Session timer
+        const timerEl = document.getElementById('usageSessionTimer');
+        const remainEl = document.getElementById('usageRemaining');
+        if (msg.sessionTimer) {
+            timerEl.textContent = msg.sessionTimer.formatted || '--:--:--';
+            remainEl.textContent = msg.sessionTimer.remainingFormatted || '--:--';
+            if (msg.sessionTimer.isExpired) {
+                remainEl.style.color = 'var(--error)';
+                remainEl.textContent = 'Expired';
+            } else {
+                remainEl.style.color = '';
+            }
+        }
+
+        // Token stats
+        const stats = msg.sessionStats || {};
+        const tokensEl = document.getElementById('usageTokens');
+        const costEl = document.getElementById('usageCost');
+        const requestsEl = document.getElementById('usageRequests');
+        const totalTokens = (stats.inputTokens || 0) + (stats.outputTokens || 0) + (stats.cacheReadTokens || 0);
+        tokensEl.textContent = this.formatTokenCount(totalTokens);
+        costEl.textContent = `$${(stats.totalCost || 0).toFixed(4)}`;
+        requestsEl.textContent = stats.requests || 0;
+
+        // Token bar
+        if (totalTokens > 0) {
+            const inputPct = ((stats.inputTokens || 0) / totalTokens * 100);
+            const outputPct = ((stats.outputTokens || 0) / totalTokens * 100);
+            const cachePct = ((stats.cacheReadTokens || 0) / totalTokens * 100);
+            document.getElementById('usageBarInput').style.width = inputPct + '%';
+            document.getElementById('usageBarOutput').style.width = outputPct + '%';
+            document.getElementById('usageBarCache').style.width = cachePct + '%';
+        }
+
+        // Burn rate
+        const burnEl = document.getElementById('usageBurnRate');
+        if (msg.burnRate && msg.burnRate.rate > 0) {
+            const rate = Math.round(msg.burnRate.rate);
+            const trend = msg.sessionTimer?.burnRate > 0 ? '' : '';
+            burnEl.textContent = `${rate} tok/min`;
+        } else {
+            burnEl.textContent = '-- tok/min';
+        }
+
+        // Depletion prediction
+        const depletionEl = document.getElementById('usageDepletion');
+        if (msg.analytics?.predictions?.depletionTime) {
+            const deplTime = new Date(msg.analytics.predictions.depletionTime);
+            const confidence = msg.analytics.predictions.confidence || 0;
+            if (confidence > 0.3) {
+                depletionEl.textContent = `Est. depletion: ${deplTime.toLocaleTimeString()} (${Math.round(confidence * 100)}%)`;
+            } else {
+                depletionEl.textContent = '';
+            }
+        } else {
+            depletionEl.textContent = '';
+        }
+    }
+
+    formatTokenCount(n) {
+        if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+        if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+        return String(n);
+    }
+
+    // ── Session Resume ──
+
+    resumeSession(sessionId, sdkSessionId) {
+        this.clearMessages();
+        this.totalCost = 0;
+        this.costDisplay.textContent = '$0.00';
+        this.sessionId = sessionId;
+        sessionStorage.setItem('ccw_sessionId', sessionId);
+        this.pendingResume = sdkSessionId;
+        this.send({ type: 'join_session', sessionId });
+    }
+
     async loadSessionList() {
         try {
             const resp = await fetch('/api/sessions/list');
@@ -152,6 +414,23 @@ class ChatUI {
             info.appendChild(time);
             item.appendChild(info);
 
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'session-item-actions';
+
+            // Resume button (if session has sdkSessionId and is not current)
+            if (s.sdkSessionId && s.id !== this.sessionId) {
+                const resumeBtn = document.createElement('button');
+                resumeBtn.className = 'session-item-resume';
+                resumeBtn.textContent = 'Resume';
+                resumeBtn.title = 'Resume Claude conversation';
+                resumeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.resumeSession(s.id, s.sdkSessionId);
+                    this.closeSidebar();
+                });
+                actionsDiv.appendChild(resumeBtn);
+            }
+
             const delBtn = document.createElement('button');
             delBtn.className = 'session-item-delete';
             delBtn.textContent = '\u00D7';
@@ -160,7 +439,8 @@ class ChatUI {
                 e.stopPropagation();
                 this.deleteSession(s.id);
             });
-            item.appendChild(delBtn);
+            actionsDiv.appendChild(delBtn);
+            item.appendChild(actionsDiv);
 
             item.addEventListener('click', () => {
                 if (s.id !== this.sessionId) {
@@ -311,19 +591,29 @@ class ChatUI {
                     this.workingDirEl.title = msg.workingDir;
                 }
 
+                // Store sdkSessionId if available
+                if (msg.sdkSessionId) {
+                    this.currentSdkSessionId = msg.sdkSessionId;
+                }
+
                 // Replay output buffer if available
                 if (msg.outputBuffer && msg.outputBuffer.length > 0) {
                     this.replayBuffer(msg.outputBuffer);
                 }
 
-                // Start SDK mode
+                // Start SDK mode (with resume if pending)
                 const urlParams = new URLSearchParams(window.location.search);
                 const skipPermissions = urlParams.has('permissions')
                     ? urlParams.get('permissions') !== 'prompt'
                     : this.permissionSelect.value === 'bypass';
+                const sdkOptions = { dangerouslySkipPermissions: skipPermissions };
+                if (this.pendingResume) {
+                    sdkOptions.resumeSessionId = this.pendingResume;
+                    this.pendingResume = null;
+                }
                 this.send({
                     type: 'start_sdk',
-                    options: { dangerouslySkipPermissions: skipPermissions }
+                    options: sdkOptions
                 });
 
                 this.loadSessionList();
@@ -332,6 +622,11 @@ class ChatUI {
 
             case 'sdk_started':
                 this.setStatus('connected', 'Ready');
+                this.startUsagePolling();
+                break;
+
+            case 'usage_update':
+                this.handleUsageUpdate(msg);
                 break;
 
             case 'sdk_processing':
@@ -348,6 +643,7 @@ class ChatUI {
                 this.setStatus('connected', 'Ready');
                 this.setProcessing(false);
                 this.removeTypingIndicator();
+                this.requestUsageUpdate();
                 break;
 
             case 'sdk_error':
@@ -481,6 +777,7 @@ class ChatUI {
 
             case 'system': {
                 if (msg.session_id) {
+                    this.currentSdkSessionId = msg.session_id;
                     console.log('SDK session ID:', msg.session_id);
                 }
                 break;

@@ -200,6 +200,15 @@ html, body {
     text-overflow: ellipsis;
     max-width: 300px;
     opacity: 0.8;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background 0.1s, color 0.1s;
+}
+.header-workdir:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    opacity: 1;
 }
 
 .header-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
@@ -698,6 +707,284 @@ html, body {
     margin: 6px auto 0;
     font-size: 11px;
     color: var(--text-secondary);
+}
+
+/* ── Folder Picker Modal ── */
+.folder-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 200;
+}
+
+.folder-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 500px;
+    max-width: 90vw;
+    max-height: 80vh;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    z-index: 201;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.folder-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.folder-modal-title {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.folder-modal-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.folder-modal-close:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+
+.folder-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 10px 16px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    overflow-x: auto;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border);
+}
+
+.folder-breadcrumb-item {
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    color: var(--accent);
+}
+.folder-breadcrumb-item:hover { background: var(--bg-tertiary); }
+
+.folder-breadcrumb-sep {
+    color: var(--text-secondary);
+    opacity: 0.5;
+}
+
+.folder-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    min-height: 200px;
+    max-height: 400px;
+}
+
+.folder-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-primary);
+    transition: background 0.1s;
+}
+.folder-item:hover { background: var(--bg-tertiary); }
+
+.folder-item-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.folder-item-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.folder-item.parent-dir {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.folder-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+}
+
+.folder-cancel-btn {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-family: var(--font-sans);
+    cursor: pointer;
+}
+.folder-cancel-btn:hover { background: var(--bg-primary); }
+
+.folder-select-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    cursor: pointer;
+}
+.folder-select-btn:hover { background: var(--accent-hover); }
+
+/* ── Usage Panel ── */
+.usage-panel {
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.usage-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    user-select: none;
+}
+.usage-panel-header:hover { color: var(--text-primary); }
+
+.usage-panel-chevron {
+    font-size: 10px;
+    transition: transform 0.15s;
+}
+.usage-panel.collapsed .usage-panel-chevron {
+    transform: rotate(-90deg);
+}
+
+.usage-panel-body {
+    padding: 0 14px 12px;
+}
+.usage-panel.collapsed .usage-panel-body {
+    display: none;
+}
+
+.usage-stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    font-size: 12px;
+}
+
+.usage-stat-label {
+    color: var(--text-secondary);
+}
+
+.usage-stat-value {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-primary);
+}
+
+.usage-bar-container {
+    padding: 6px 0;
+}
+
+.usage-bar {
+    height: 6px;
+    background: var(--bg-primary);
+    border-radius: 3px;
+    overflow: hidden;
+    display: flex;
+}
+
+.usage-bar-fill {
+    height: 100%;
+    transition: width 0.3s ease;
+}
+
+.usage-bar-input { background: var(--accent); }
+.usage-bar-output { background: var(--success); }
+.usage-bar-cache { background: var(--purple); }
+
+.usage-bar-legend {
+    display: flex;
+    gap: 12px;
+    margin-top: 4px;
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+.usage-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.usage-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.usage-depletion {
+    font-size: 11px;
+    color: var(--warning);
+    padding: 4px 0;
+}
+
+.usage-depletion:empty { display: none; }
+
+.usage-trend-up { color: var(--error); }
+.usage-trend-down { color: var(--success); }
+.usage-trend-stable { color: var(--text-secondary); }
+
+/* ── Session Resume Button ── */
+.session-item-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.session-item-resume {
+    background: none;
+    border: 1px solid var(--success);
+    color: var(--success);
+    cursor: pointer;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.1s;
+    font-family: var(--font-sans);
+}
+.session-item:hover .session-item-resume { opacity: 1; }
+.session-item-resume:hover {
+    background: var(--success);
+    color: #fff;
 }
 
 /* ── Responsive ── */
