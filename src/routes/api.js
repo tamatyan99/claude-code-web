@@ -390,7 +390,7 @@ function registerApiRoutes(server) {
   app.patch('/api/sessions/:sessionId', (req, res) => {
     const session = server.claudeSessions.get(req.params.sessionId);
     if (!session) return res.status(404).json({ error: 'Session not found' });
-    const name = (req.body.name || '').trim().substring(0, 100);
+    const name = String(req.body.name || '').trim().substring(0, 100);
     if (name) session.name = name;
     server.saveSessionsToDisk();
     res.json({ success: true, name: session.name });
@@ -474,7 +474,7 @@ function registerApiRoutes(server) {
 
     const { execSync } = require('child_process');
     try {
-      const opts = { cwd: validation.path, timeout: 5000 };
+      const opts = { cwd: validation.path, timeout: 5000, stdio: 'pipe' };
       const branch = execSync('git branch --show-current', opts).toString().trim();
       const status = execSync('git status --short', opts).toString().trim();
       const log = execSync('git log --oneline -5', opts).toString().trim();

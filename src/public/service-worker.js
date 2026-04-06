@@ -1,11 +1,6 @@
-const CACHE_NAME = 'claude-code-web-v2';
+const CACHE_NAME = 'claude-code-web-v3';
 const urlsToCache = [
   '/',
-  '/index.html',
-  '/style.css',
-  '/app.js',
-  '/session-manager.js',
-  '/plan-detector.js',
   '/v2/index.html',
   '/v2/chat.js',
   '/v2/chat.css'
@@ -25,7 +20,7 @@ self.addEventListener('install', event => {
   );
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up old caches and take control
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(cacheNames => {
@@ -37,10 +32,8 @@ self.addEventListener('activate', event => {
           }
         })
       );
-    })
+    }).then(() => self.clients.claim())
   );
-  // Take control of all pages immediately
-  self.clients.claim();
 });
 
 // Fetch event - serve from cache when offline, network first for API calls
@@ -55,9 +48,8 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       fetch(request)
         .catch(() => {
-          // Return a offline response for API calls
           return new Response(
-            JSON.stringify({ error: 'Offline - please check your connection' }), 
+            JSON.stringify({ error: 'Offline - please check your connection' }),
             {
               status: 503,
               headers: { 'Content-Type': 'application/json' }
@@ -72,7 +64,6 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     fetch(request)
       .then(response => {
-        // If we got a valid response, update the cache
         if (response && response.status === 200) {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME)
@@ -83,17 +74,15 @@ self.addEventListener('fetch', event => {
         return response;
       })
       .catch(() => {
-        // Network failed, try to get from cache
         return caches.match(request)
           .then(response => {
             if (response) {
               return response;
             }
-            // If not in cache and offline, return offline page for navigation requests
+            // Offline navigation → v2 app shell
             if (request.mode === 'navigate') {
-              return caches.match('/index.html');
+              return caches.match('/v2/index.html');
             }
-            // Return 404 for other requests
             return new Response('Resource not available offline', { status: 404 });
           });
       })
